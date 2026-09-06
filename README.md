@@ -43,3 +43,12 @@ The previous 12-node simulation and its optional WebMCP helper remain in the sou
 
 Full portfolio export/import preserves all 30 projects. Legacy north/south project IDs migrate to GBT-01 / GBT-05 without discarding the other 28 sites. Import validation rejects mismatched and duplicate identities. The network test covers 450 failure/scenario/demand combinations; detailed lifecycle tests cover every site. Control tests cover all type-specific routes, fault controls and site search. The floating type-selection menu's layout and WebGL pixel output are not validated by the jsdom harness.
 
+
+## 30-site 3D cabling upgrade
+The network home defaults to an orbitable 3D campus with all 30 sites and 38 selectable transport paths. The 2D topology remains available. Each physical site now includes selectable fiber, Ethernet, RF jumper/coax, DC and grounding geometry, with layer controls and selected termination markers.
+
+`lib/cabling.ts` generates 610 local cable segments and explicit illustrative ODFs, splice trays, DC distribution, earth bars, microwave terminals and IBS splitters. These derived fixtures are separate from the 254 equipment inventory records. The schedule shows both endpoint assets, ports, connectors, cable specification, length basis and service. Export the selected site's cable schedule as JSON. All 110 initial antennas have an ordered physical trace from the active core, including intermediate site switching, optical patches, splices and radio conversion. Electrical support cables appear separately from the traffic trace.
+
+Inter-site Ethernet services use optical trunks; Cat6A is local. The network layout, port names, connector schedule and lengths are synthetic design examples, not surveyed installation or field continuity records. Cable topology is generated from canonical asset IDs; new custom antennas remain unconnected until a mapping is implemented. No loss-budget, protection-sizing, coverage or live telemetry calculation is claimed.
+
+Validation: `node cabling.test.mjs` checks all generated endpoints, all antenna trace continuity, both core routes, removal behavior and finite Three.js tube geometry. The existing model, topology, IFC, and UI-control tests remain applicable. WebGL pixels and browser layout have not been visually validated.

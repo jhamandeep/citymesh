@@ -29,3 +29,6 @@ The end-state remains partially demonstrated where the reference depends on prod
 - Saved physical faults reduce throughput or disconnect sites in the shared network routing calculation.
 - Production integration, live telemetry and shared multi-user state remain outside the demonstrated prototype.
 
+
+### Latest user request: entire-network 3D and end-to-end cabling
+Implemented an orbitable 30-site overview and site-level selectable cable geometry; endpoint/port inspector; ODF patch/pigtail/splice/trunk details; local copper Ethernet, radio fiber, RF jumpers, IBS splitter/coax branches, DC and grounding; ordered active-core-to-antenna traces; JSON cable schedules. The default synthetic portfolio generates 610 local segments and 110 antenna traces. All 38 transport paths are represented. The 3D campus is schematic; engineering-grade surveys, cable loss budgets and live per-port telemetry remain gaps. Pixel-level browser QA has not been performed. Independent tests verify trace continuity, geometry and controls.
