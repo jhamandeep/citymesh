@@ -104,3 +104,5 @@ Real Austin environment: the 3D map includes official USGS ground elevations and
 Export 30-site BIM downloads the coordinated hypothetical infrastructure/wiring model; real-city context geometry is currently a separate viewer dataset.
 
 In Network scenario lab, enable Apply modeled microwave LoS to feed the current terrain/building findings into route availability. The control starts off and excludes blocked, insufficient-Fresnel or unverified paths conservatively. It displays reachability and delivered-throughput changes; Reset network scenarios disables it. The selected LoS frequency applies to all microwave paths in this scenario. Manual and saved equipment failures still apply.
+
+For a coordinated BIM with real city context, check Include terrain & buildings in BIM before exporting. The option enables after source data load, uses terrain elevations for sites and connections, and preserves individual source building IDs. Unknown building heights remain footprint-only annotations. The resulting IFC is about 29 MB. Leave the option off for the smaller flat hypothetical design export.
