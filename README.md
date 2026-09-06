@@ -24,7 +24,7 @@ The integration harness uses jsdom and the actual form, tab, select and checkbox
 4. **Build:** start from an approved revision, complete four field checks with evidence notes, and accept the as-built baseline. Missing evidence or unresolved high-severity issues block acceptance. JSON project export/import supports manual field handoff.
 5. **Operate:** simulate equipment condition, record/resolve/reopen asset-linked issues, inspect history, and trace a failed site's impact to the city network. Complete gateway, antenna or radio loss disconnects its site. Partial radio faults reduce modeled throughput; both private core sources and all backhaul dependencies participate in routing.
 
-Projects are explicitly browser-local, versioned JSON records under `citymesh.site-projects.v1`. The app reports persistence errors, validates imports before replacement and offers portable exports. GLB geometry is session-only and is not automatically mapped to inventory. Stored JSON does not contain uploads.
+Projects are explicitly browser-local, versioned JSON records under `citymesh.site-projects.v1`. The app reports persistence errors, validates imports before replacement and offers portable exports. GLB geometry is retained separately per site in IndexedDB and is not automatically mapped to inventory. Stored project JSON does not contain survey uploads; download each GLB and its provenance manifest for exchange.
 
 ## Model fidelity
 
@@ -57,3 +57,9 @@ Validation: `node cabling.test.mjs` checks all generated endpoints, all antenna 
 Each cable panel offers **Export connected BIM · IFC4**. This exports the selected site's equipment and generated distribution fixtures, sampled cable centerlines matching the 3D routing, uniquely owned termination ports (`IfcRelNests`), and `IfcRelConnectsPorts` relationships realized by `IfcCableSegment` objects. Cable specifications, connectors, service, transport-link IDs, estimated lengths and design provenance are included. The original equipment-only export remains available.
 
 Run `node ifc-connectivity.test.mjs` for parser verification across all 30 sites (610 cables, 1,220 ports). Exports cover local site wiring; remote sites, the intersite trunk geometry, tower structure and imported survey meshes are not bundled. Cable axes have no certified diameter/body model. External BIM tool interoperability and field accuracy remain unverified.
+
+
+### Persistent site survey library
+The physical site viewer restores one self-contained GLB per site from `citymesh.site-surveys.v1` IndexedDB storage. Imports are parsed before replacement; files retain source, capture date, notes, import time and SHA-256. The checksum is verified during storage and retrieval. Survey geometry is a distinct viewing mode: return to equipment/cables without deleting the survey, or download the original GLB and provenance manifest. Removal requires an explicit UI confirmation. Storage failures keep the newly opened model in the current session and preserve any previous saved file.
+
+`node survey.test.mjs` verifies byte-exact persistence, site isolation, checksum and quota failures, and deletion isolation with fake-indexeddb. `node survey-controls.test.mjs` checks actual import, provenance entry, remount restoration, invalid replacement retention, view switching and removal controls, using the real GLB parser. These tests do not certify WebGL rendering or surveyed accuracy. Files are browser-local and are not uploaded or synchronized to other users/devices. Survey registration, photogrammetry and automatic inventory recognition remain unimplemented.

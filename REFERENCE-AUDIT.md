@@ -14,7 +14,7 @@ Reference reviewed on 2026-09-06: https://www.ericsson.com/en/network-services/d
 | Build and collaborate | Field checks, evidence notes, JSON handoff, acceptance baseline | Full draft→approved→building→accepted→new-revision integration passes; no multi-user server synchronization or AR. |
 | Operate and maintain | Condition controls, asset-linked issues, history, city mapping | Issue lifecycle and network model tests pass; live telemetry not connected. |
 | City infrastructure and connectivity | 30-site `/` private-network simulator plus a physical workspace for every site | 450 failure/scenario/demand combinations; dual-core failover, ring redundancy, access isolation and physical hardware degradation tests pass. |
-| Deploy a usable end product | Same private Sites project, `/sites` route | Production deployment status must be recorded after this version publishes. |
+| Deploy a usable end product | Same private Sites project, `/sites` route | Version 4 deployment succeeded and the private /sites route returned HTTP 200 with the connected BIM control. Each subsequent publish requires its own status and HTTP checks. |
 
 The end-state remains partially demonstrated where the reference depends on production capture, integrations, collaboration and AI. Do not mark full reference equivalence from green prototype tests.
 
@@ -37,3 +37,7 @@ Implemented an orbitable 30-site overview and site-level selectable cable geomet
 The equipment-only export is now complemented by a connected site IFC4 handoff. `lib/ifc-export.ts` exports distribution elements, cable centerlines, uniquely nested ports and realized connectivity relationships. `ifc-connectivity.test.mjs` independently parses all 30 exports and verifies 610 segments, 1,220 ports, owners, endpoint names, coordinate mapping, metadata and unique IDs. `network-controls.test.mjs` exercises the actual download action and checks the resulting IFC contents. This closes the local wiring-loss gap in exports; it does not establish BIM round-trip, external viewer certification or entire-campus federated export.
 
 IFC design reference: https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcRelConnectsPorts.htm (IFC4 entity signatures additionally checked against the installed web-ifc IFC4 schema).
+
+
+### Survey workflow evidence
+`components/twin/survey-panel.tsx` and `lib/survey-store.ts` replace session-only uploads with per-site binary persistence and provenance. The existing real GLB validator runs before replacement. Automated checks cover reopening the same site, another site's isolation, checksum mismatch, a simulated storage quota failure, invalid input, mode switching and removal. No real survey was supplied, so geometry accuracy, capture/reconstruction, coordinate registration and automatic asset identification remain unproven. The library is explicitly browser-local, not shared collaboration.

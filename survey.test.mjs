@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import 'fake-indexeddb/auto';
+import {IDBObjectStore} from 'fake-indexeddb';
+import {makeSurvey,saveSurvey,getSurvey,removeSurvey} from './lib/survey-store.ts';
+import {loadSiteGlb,disposeObject} from './lib/site-geometry.ts';
+const bin=Buffer.from(new Float32Array([0,0,0,2,0,0,0,3,0]).buffer),json={asset:{version:'2.0'},scene:0,scenes:[{nodes:[0]}],nodes:[{mesh:0}],meshes:[{primitives:[{attributes:{POSITION:0}}]}],buffers:[{byteLength:36}],bufferViews:[{buffer:0,byteLength:36}],accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[2,3,0]}]};
+const j=Buffer.from(JSON.stringify(json)),padded=Buffer.alloc(Math.ceil(j.length/4)*4,32);j.copy(padded);const out=Buffer.alloc(28+padded.length+bin.length);out.writeUInt32LE(0x46546c67,0);out.writeUInt32LE(2,4);out.writeUInt32LE(out.length,8);out.writeUInt32LE(padded.length,12);out.writeUInt32LE(0x4e4f534a,16);padded.copy(out,20);out.writeUInt32LE(bin.length,20+padded.length);out.writeUInt32LE(0x004e4942,24+padded.length);bin.copy(out,28+padded.length);
+export const surveyBytes=out.buffer.slice(out.byteOffset,out.byteOffset+out.byteLength);
+const meta={source:'Test scanner',capturedAt:'2026-09-06',note:'Fixture coordinates in metres'};
+const first=await makeSurvey('GBT-01','survey.glb',surveyBytes,meta),second=await makeSurvey('IBS-01','indoor.glb',surveyBytes,meta);
+const geometry=await loadSiteGlb(surveyBytes);assert.equal(geometry.extent,3);disposeObject(geometry.scene);
+await saveSurvey(first);await saveSurvey(second);assert.deepEqual(await getSurvey('GBT-01'),first);assert.equal((await getSurvey('IBS-01')).filename,'indoor.glb');assert.equal(await getSurvey('CORE-02'),null);
+const copy=await getSurvey('GBT-01');new Uint8Array(copy.bytes)[25]^=1;await assert.rejects(()=>saveSurvey(copy),/checksum/);assert.deepEqual(await getSurvey('GBT-01'),first);
+const originalPut=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(){throw new DOMException('Quota exceeded','QuotaExceededError');};await assert.rejects(()=>saveSurvey({...first,filename:'replacement.glb'}),/Quota/);IDBObjectStore.prototype.put=originalPut;assert.equal((await getSurvey('GBT-01')).filename,'survey.glb');
+await assert.rejects(()=>makeSurvey('unknown','x.glb',surveyBytes,meta),/known site/);await assert.rejects(()=>makeSurvey('GBT-01','x.glb',new ArrayBuffer(12),meta),/GLB/);
+await removeSurvey('GBT-01');assert.equal(await getSurvey('GBT-01'),null);assert.equal((await getSurvey('IBS-01')).filename,'indoor.glb');await removeSurvey('IBS-01');
+const factory=globalThis.indexedDB;globalThis.indexedDB=undefined;await assert.rejects(()=>getSurvey('GBT-01'),/unavailable/);globalThis.indexedDB=factory;
+console.log('Survey persistence passed: valid GLB parsing, byte-exact retrieval, per-site isolation, checksum rejection, failed replacement preserving the saved file, removal isolation and unavailable storage.');
