@@ -41,3 +41,6 @@ IFC design reference: https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE
 
 ### Survey workflow evidence
 `components/twin/survey-panel.tsx` and `lib/survey-store.ts` replace session-only uploads with per-site binary persistence and provenance. The existing real GLB validator runs before replacement. Automated checks cover reopening the same site, another site's isolation, checksum mismatch, a simulated storage quota failure, invalid input, mode switching and removal. No real survey was supplied, so geometry accuracy, capture/reconstruction, coordinate registration and automatic asset identification remain unproven. The library is explicitly browser-local, not shared collaboration.
+
+### Survey registration evidence
+The survey viewer now supports persisted manual translation, yaw and scale, with a translucent equipment/cabling overlay. Pure Three.js tests verify transformed world coordinates, bounds, raycasts and original material restoration. Control integration verifies saved/restored alignment and overlay state; legacy survey records default to identity transforms. No supplied survey/control points are available, so a real-site registration residual and visual alignment accuracy remain unverified. Shared collaboration and live telemetry remain open gaps.
