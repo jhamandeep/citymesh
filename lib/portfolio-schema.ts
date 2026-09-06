@@ -5,3 +5,5 @@ export const portfolioSites=sqliteTable('portfolio_sites',{siteId:text('site_id'
 export const portfolioSnapshots=sqliteTable('portfolio_snapshots',{version:integer('version').primaryKey(),updatedAt:text('updated_at').notNull()});
 export const portfolioRevisionSites=sqliteTable('portfolio_revision_sites',{version:integer('version').notNull(),siteId:text('site_id').notNull(),body:text('body').notNull()},table=>[primaryKey({columns:[table.version,table.siteId]})]);
 
+
+export const inspectionPhotos=sqliteTable('inspection_photos',{id:text('id').primaryKey(),siteId:text('site_id').notNull(),objectKey:text('object_key').notNull(),metadata:text('metadata').notNull(),portfolioVersion:integer('portfolio_version').notNull(),sharedAt:text('shared_at').notNull()});

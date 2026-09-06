@@ -13,7 +13,7 @@ const downloads=[];dom.window.HTMLAnchorElement.prototype.click=function(){downl
 await build({entryPoints:['components/twin/photo-panel.tsx'],outfile:'.test-photo-bundle.mjs',bundle:true,platform:'node',format:'esm',packages:'external',jsx:'automatic',loader:{'.css':'empty'}});
 const React=await import('react'),{render,screen,fireEvent,cleanup,waitFor}=await import('@testing-library/react'),{default:Panel}=await import(pathToFileURL(path.resolve('.test-photo-bundle.mjs')).href);
 let located='';const props={siteId:'GBT-01',revision:2,equipment:createPortfolio()['GBT-01'].equipment,selected:'ANT-A',onSelect:id=>located=id};
-render(React.createElement(Panel,props));await waitFor(()=>assert.equal(screen.getByLabelText('Attach component photo').disabled,false));
+render(React.createElement(Panel,props));await waitFor(()=>assert.equal(screen.getByLabelText('Attach component photo').closest('fieldset').disabled,false));
 fireEvent.change(screen.getByLabelText('Photo source'),{target:{value:'Inspection team'}});fireEvent.change(screen.getByLabelText('Photo capture date'),{target:{value:'2026-09-06'}});
 const upload=()=>fireEvent.change(screen.getByLabelText('Attach component photo'),{target:{files:[{name:'field.png',size:photoBytes.byteLength,arrayBuffer:async()=>photoBytes.slice(0)}]}});
 upload();await waitFor(()=>assert.ok(screen.getByText('Photo saved for ANT-A.')));assert.equal((await listPhotos('GBT-01'))[0].revision,2);assert.equal((await listPhotos('GBT-01'))[0].source,'Inspection team');

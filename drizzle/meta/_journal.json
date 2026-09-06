@@ -15,6 +15,13 @@
       "when": 1788689348591,
       "tag": "0001_complete_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788695636130,
+      "tag": "0002_loose_redwing",
+      "breakpoints": true
     }
   ]
 }

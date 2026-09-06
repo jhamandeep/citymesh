@@ -42,3 +42,5 @@ next-env.d.ts
 .test-survey-bundle.mjs
 .test-shared-bundle.mjs
 .test-history-bundle.mjs
+.test-photo-bundle.mjs
+.test-shared-photos-bundle.mjs
