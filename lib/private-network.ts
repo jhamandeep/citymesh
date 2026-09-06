@@ -12,7 +12,9 @@ const ring=['CORE-01','GBT-01','GBT-02','GBT-04','GBT-07','CORE-02','GBT-06','GB
 for(let i=1;i<=8;i++){const id=`RTT-${String(i).padStart(2,'0')}`,parent=`GBT-${String(i).padStart(2,'0')}`;link(parent,id,i%3===0?'microwave':'fiber',i%3===0?600:1000,i%3===0?5:2);if(i%2===0)link(i<=4?'CORE-01':'CORE-02',id,'microwave',500,6);}
 for(let i=1;i<=10;i++){const id=`IBS-${String(i).padStart(2,'0')}`,parent=`RTT-${String((i-1)%8+1).padStart(2,'0')}`;link(parent,id,'ethernet',1000,1);if(i===3||i===5||i===8)link('CORE-02',id,'fiber',1000,2);}
 link('GBT-03','SC-01','microwave',300,5);link('GBT-08','SC-02','fiber',500,2);
-export const networkLinks=backhaul;
+// All seven proposed microwave paths failed the sourced Austin LoS assessment.
+export const fiberReplacements=backhaul.filter(l=>l.kind==='microwave').map(l=>l.id);
+export const networkLinks:Backhaul[]=backhaul.map(l=>l.kind==='microwave'?{...l,kind:'fiber',capacity:1000,latency:2}:l);
 export type NetworkScenario='normal'|'fiber'|'power'|'core'|'peak';
 export const networkScenarios=[{id:'normal',name:'Normal operations',description:'Both private cores and all transport paths available.'},{id:'fiber',name:'Fiber ring cut',description:'Break the primary core-to-north ring link. Reachable sites route through an alternate path.'},{id:'power',name:'North campus outage',description:'Disconnect non-core sites in North campus to model exhausted backup power.'},{id:'core',name:'Primary core failure',description:'Take CORE-01 offline. The disaster recovery core becomes the source for remaining sites.'},{id:'peak',name:'Campus demand surge',description:'Double all site demand. Shared transport links can become congested.'}] as const;
 export function simulateNetwork(scenario:NetworkScenario,demand:number,failedSites:string[]=[],failedLinks:string[]=[],radioFactors:Record<string,number>={}){
