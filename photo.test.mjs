@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import 'fake-indexeddb/auto';
+import {IDBObjectStore} from 'fake-indexeddb';
+import {makePhoto,savePhoto,listPhotos,removePhoto,photoMime} from './lib/photo-store.ts';
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5V8AAAAASUVORK5CYII=','base64');
+export const photoBytes=png.buffer.slice(png.byteOffset,png.byteOffset+png.byteLength);
+const input={siteId:'GBT-01',assetId:'ANT-A',revision:1,filename:'inspection.png',bytes:photoBytes,source:'Field team',capturedAt:'2026-09-06',note:'Connector inspection'};
+const first=await makePhoto(input),other=await makePhoto({...input,siteId:'IBS-01'});
+assert.equal(photoMime(photoBytes),'image/png');await savePhoto(first);await savePhoto(other);assert.deepEqual(await listPhotos('GBT-01'),[first]);
+const changed=structuredClone(first);new Uint8Array(changed.bytes)[20]^=1;await assert.rejects(()=>savePhoto(changed),/checksum/);
+await assert.rejects(()=>removePhoto('IBS-01',first.id),/belong/);assert.equal((await listPhotos('GBT-01')).length,1);
+const original=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(){throw new DOMException('Quota exceeded','QuotaExceededError');};await assert.rejects(()=>savePhoto({...first,id:'quota'}),/Quota/);IDBObjectStore.prototype.add=original;assert.deepEqual(await listPhotos('GBT-01'),[first]);
+await assert.rejects(()=>makePhoto({...input,bytes:new ArrayBuffer(20)}),/JPEG/);await assert.rejects(()=>makePhoto({...input,capturedAt:'2026-02-30'}),/metadata/);
+await Promise.all(Array.from({length:19},(_,i)=>savePhoto({...first,id:`photo-${i}`})));await assert.rejects(()=>savePhoto({...first,id:'overflow'}),/20 photos/);assert.equal((await listPhotos('GBT-01')).length,20);
+for(const r of await listPhotos('GBT-01'))await removePhoto('GBT-01',r.id);assert.equal((await listPhotos('IBS-01')).length,1);await removePhoto('IBS-01',other.id);
+console.log('PASS: photo originals, metadata, site isolation, checksum rejection, atomic quota failure, concurrent site limits and deletion isolation.');
