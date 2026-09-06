@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {createPortfolio,siteCondition} from './lib/site-model.ts';
+import {simulateNetwork,networkLinks} from './lib/private-network.ts';
+import {parseObservations,freshObservation,observationScenario,OBSERVATION_FRESH_MS} from './lib/observations.ts';
+const p=createPortfolio(),before=structuredClone(p),now=Date.now(),at=new Date(now).toISOString();
+const batch={schema:1,source:'Test monitor',observations:[{kind:'equipment',siteId:'GBT-01',assetId:'CAB-01',observedAt:at,state:'down',temperatureC:72},{kind:'link',linkId:'L02',observedAt:at,state:'down',rxPowerDbm:-67}]};
+const records=parseObservations(batch,p,now);assert.equal(records[0].key,'equipment:GBT-01:CAB-01');assert.ok(freshObservation(records[0],now+OBSERVATION_FRESH_MS));assert.equal(freshObservation(records[0],now+OBSERVATION_FRESH_MS+1),false);assert.equal(freshObservation(records[0],now-1),false);
+const applied=observationScenario(p,records,true,now);assert.equal(siteCondition(applied.portfolio['GBT-01']).offline,true);assert.deepEqual(applied.links,['L02']);assert.deepEqual(p,before);
+const sim=simulateNetwork('normal',100,['GBT-01'],applied.links);for(const s of sim.states)for(const i of s.route||[])assert.notEqual(networkLinks[i].id,'L02');
+assert.equal(observationScenario(p,records,false,now).portfolio,p);assert.equal(observationScenario(p,records,true,now+OBSERVATION_FRESH_MS+1).portfolio,p);
+const faulty=structuredClone(p);faulty['GBT-01'].equipment.find(e=>e.id==='CAB-01').condition='offline';assert.equal(siteCondition(observationScenario(faulty,[{...records[0],state:'up'}],true,now).portfolio['GBT-01']).offline,true);
+for(const replacement of [{assetId:'missing'},{observedAt:new Date(now+61000).toISOString()},{temperatureC:Infinity},{state:'healthy'}])assert.throws(()=>parseObservations({...batch,observations:[{...batch.observations[0],...replacement}]},p,now));
+assert.throws(()=>parseObservations({...batch,observations:[batch.observations[0],batch.observations[0]]},p,now),/once/);
+console.log('PASS: observation mapping, validation, freshness boundaries, immutable operational overlay, routing exclusion, expiry restoration and manual-fault precedence.');

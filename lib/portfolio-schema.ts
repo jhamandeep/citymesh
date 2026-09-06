@@ -9,3 +9,5 @@ export const portfolioRevisionSites=sqliteTable('portfolio_revision_sites',{vers
 export const inspectionPhotos=sqliteTable('inspection_photos',{id:text('id').primaryKey(),siteId:text('site_id').notNull(),objectKey:text('object_key').notNull(),metadata:text('metadata').notNull(),portfolioVersion:integer('portfolio_version').notNull(),sharedAt:text('shared_at').notNull()});
 
 export const sharedSurveys=sqliteTable('shared_surveys',{siteId:text('site_id').primaryKey(),version:integer('version').notNull(),objectKey:text('object_key'),metadata:text('metadata'),updatedAt:text('updated_at').notNull()});
+
+export const networkObservations=sqliteTable('network_observations',{entityKey:text('entity_key').primaryKey(),observedAt:text('observed_at').notNull(),body:text('body').notNull(),receivedAt:text('received_at').notNull()});

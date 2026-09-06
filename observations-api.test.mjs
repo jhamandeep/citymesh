@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+const origin='http://localhost:3000',url=origin+'/api/observations';
+const get=()=>fetch(url).then(r=>r.json());const initial=await get(),last=initial.observations.find(r=>r.key==='equipment:GBT-01:CAB-01');const time=Math.max(Date.now(),last?Date.parse(last.observedAt)+10:0);
+const batch={schema:1,source:'Local runtime test',observations:[{kind:'equipment',siteId:'GBT-01',assetId:'CAB-01',observedAt:new Date(time).toISOString(),state:'down',temperatureC:67}]};
+const post=(value,from=origin)=>fetch(url,{method:'POST',headers:{Origin:from,'Content-Type':'application/json'},body:JSON.stringify(value)});
+assert.equal((await post(batch,'https://elsewhere.example')).status,403);assert.equal((await post({...batch,observations:[{...batch.observations[0],assetId:'not-an-asset'}]})).status,400);
+const saved=await post(batch);assert.equal(saved.status,200,await saved.clone().text());assert.equal((await saved.json()).accepted,1);assert.equal((await (await post(batch)).json()).ignored,1);
+assert.equal((await (await post({...batch,observations:[{...batch.observations[0],state:'up',observedAt:new Date(time-1000).toISOString()}]})).json()).ignored,1);assert.equal((await get()).observations.find(r=>r.key==='equipment:GBT-01:CAB-01').state,'down');
+const competing=await Promise.all([post({...batch,observations:[{...batch.observations[0],observedAt:new Date(time+1).toISOString(),state:'degraded'}]}),post({...batch,observations:[{...batch.observations[0],observedAt:new Date(time+2).toISOString(),state:'unknown'}]})]);assert.ok(competing.every(r=>r.status===200));const final=(await get()).observations.find(r=>r.key==='equipment:GBT-01:CAB-01');assert.equal(final.state,'unknown');assert.equal(final.observedAt,new Date(time+2).toISOString());
+console.log('PASS: real local D1 observation ingest/read, equipment validation, origin gate, duplicate and out-of-order suppression, competing timestamps and latest-state restoration.');
