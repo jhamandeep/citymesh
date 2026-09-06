@@ -97,3 +97,5 @@ All seven microwave paths have paired 1.2 m parabolic dish models with rim, feed
 Validation: RF model/projection/14 terminals and port coordinates; 30-site Three geometry; cable trace; all-site IFC; root/site interaction tests; TypeScript, authored lint and production build. Browser WebGL pixels, label collision avoidance and frame rate are not certified by these checks.
 
 Latest inspection UI: detailed labels now appear only on hover. Compact Links/Layers menus sit at the top left of the 3D/map canvas. Use Locate component or Focus selected equipment for keyboard/touch inspection without hovering. This supersedes the earlier persistent-callout implementation.
+
+Austin now defaults to 3D geographic inspection with optional Flat map. Street imagery is a flat georeferenced ground plane; infrastructure models and RF contours occupy that world. RF sectors follow real inventory IDs, modeled antenna directions and connected-radio conditions. Native inspection links reload the selected site/asset workspace. Topology sizing rules no longer affect toolbar icons.

@@ -2,7 +2,7 @@
 /* Browser-local projects are loaded after hydration. */
 /* oxlint-disable react/react-compiler */
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/twin/site-link';
 import { Network, Download, Upload, ArrowLeft, ArrowUpRight, CheckCircle2, ClipboardCheck, Box, Radar, Wrench, Activity, Plus, Trash2, AlertTriangle, RadioTower, Save, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
