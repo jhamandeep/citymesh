@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {createPortfolio} from './lib/site-model.ts';
 import {networkLinks,simulateNetwork} from './lib/private-network.ts';
 import {buildSiteCabling,externalCable,traceCircuit,equipmentEndpoint} from './lib/cabling.ts';
+import {createEquipmentMesh} from './lib/site-geometry.ts';
 import {createCableMesh} from './lib/cable-geometry.ts';
 const portfolio=createPortfolio(),network=simulateNetwork('normal',100);let count=0,antennas=0;
 for(const p of Object.values(portfolio)){
@@ -15,6 +16,7 @@ for(const l of networkLinks){const c=externalCable(l,portfolio);assert.equal(c.f
 const edited=structuredClone(portfolio);edited['GBT-01'].equipment=edited['GBT-01'].equipment.filter(e=>e.id!=='RRU-A');assert.ok(!buildSiteCabling(edited['GBT-01']).cables.some(c=>c.to.assetId==='ANT-A'));assert.equal(buildSiteCabling(edited['GBT-01']).cables.find(c=>c.to.assetId==='ANT-B').from.assetId,'RRU-B');
 edited['IBS-01'].equipment=edited['IBS-01'].equipment.filter(e=>e.id!=='RU-F1');assert.ok(!buildSiteCabling(edited['IBS-01']).cables.some(c=>c.to.assetId==='DAS-F1-1'));assert.ok(buildSiteCabling(edited['IBS-01']).cables.some(c=>c.to.assetId==='DAS-F2-1'));
 edited['GBT-01'].equipment=[];assert.equal(externalCable(networkLinks.find(l=>l.a==='GBT-01'||l.b==='GBT-01'),edited)[networkLinks.find(l=>l.a==='GBT-01'||l.b==='GBT-01').a==='GBT-01'?'from':'to'].assetId,'UNTERMINATED');
-const a={...portfolio['GBT-01'].equipment[0],position:[0,0,0],azimuth:90};assert.ok(equipmentEndpoint(portfolio['GBT-01'],a,'RF','test').position[0]>0);
+const a={...portfolio['GBT-01'].equipment[0],position:[0,0,0],azimuth:90};const mesh=createEquipmentMesh(a);mesh.updateMatrixWorld();const expected=new THREE.Vector3(0,0,a.size[2]/2+.08).applyMatrix4(mesh.matrixWorld);assert.ok(expected.distanceTo(new THREE.Vector3(...equipmentEndpoint(portfolio['GBT-01'],a,'RF','test').position))<1e-8);mesh.geometry.dispose();mesh.material.dispose();
 const failed=simulateNetwork('core',100);for(const s of failed.states.filter(s=>s.route&&s.type!=='CORE')){const asset=portfolio[s.id].equipment.find(e=>e.kind==='antenna');assert.equal(traceCircuit(portfolio,s.id,asset.id,s.route,s.source).source,'CORE-02');}
 console.log(`Cabling verified: ${count} local segments, ${antennas} complete antenna traces, 38 intersite paths, finite Three.js geometry, stable wiring after deletions and backup-core traces.`);
+

@@ -14,6 +14,9 @@ await build({entryPoints:['app/page.tsx'],outfile:'.test-network-bundle.mjs',bun
 const React=await import('react');const {render,screen,fireEvent,cleanup,waitFor}=await import('@testing-library/react');const {default:Sites}=await import(pathToFileURL(path.resolve('.test-network-bundle.mjs')).href);
 
 render(React.createElement(Sites));assert.ok(screen.getByRole('heading',{name:'One network. Every site connected.'}));assert.equal(screen.getAllByRole('row').length,31);assert.ok(document.querySelectorAll('.circuit-trace li').length>5);fireEvent.click(document.querySelector('.cable-list button'));assert.ok(document.querySelector('.cable-detail').textContent.includes('LC/UPC'));
+const savedCreate=URL.createObjectURL,savedRevoke=URL.revokeObjectURL,savedClick=window.HTMLAnchorElement.prototype.click;let savedBlob,downloadName;
+URL.createObjectURL=blob=>{savedBlob=blob;return 'blob:test-bim';};URL.revokeObjectURL=()=>{};window.HTMLAnchorElement.prototype.click=function(){downloadName=this.download;};
+fireEvent.click(screen.getByRole('button',{name:'Export connected BIM · IFC4'}));await waitFor(()=>assert.ok(screen.getByText('IFC4 exported with equipment, cable axes, distribution ports and connection relationships.')));assert.equal(downloadName,'GBT-01-equipment-and-cabling.ifc');assert.ok((await savedBlob.text()).includes('IFCRELCONNECTSPORTS('));URL.createObjectURL=savedCreate;URL.revokeObjectURL=savedRevoke;window.HTMLAnchorElement.prototype.click=savedClick;
 const physicalLinks=screen.getAllByRole('link').map(a=>a.getAttribute('href')).filter(h=>h?.startsWith('/sites?site='));assert.equal(new Set(physicalLinks.map(h=>h.split('&')[0])).size,30);
 fireEvent.click(screen.getByRole('button',{name:'IBS-01 Assembly hall',exact:true}));assert.equal(screen.getByRole('link',{name:'Inspect 3D site'}).getAttribute('href'),'/sites?site=IBS-01');
 fireEvent.click(screen.getByRole('button',{name:'Simulate complete site outage'}));assert.equal(document.querySelector('.network-detail .site-health').textContent,'Disconnected');assert.ok(document.querySelector('.trace-warning').textContent.includes('No transport path'));
@@ -21,6 +24,7 @@ fireEvent.click(screen.getByRole('button',{name:'Restore simulated site'}));asse
 fireEvent.click(screen.getByRole('button',{name:'2D topology'}));fireEvent.click(screen.getByRole('button',{name:/^L01:/}));fireEvent.click(screen.getByRole('button',{name:'Simulate link failure'}));assert.ok(screen.getByText('Offline',{exact:true,selector:'dd'}));fireEvent.click(screen.getByRole('button',{name:'Restore transport link'}));assert.ok(screen.getByText('Available',{exact:true,selector:'dd'}));
 fireEvent.change(screen.getByRole('textbox',{name:'Search network sites'}),{target:{value:'IBS-'}});assert.equal(screen.getAllByRole('row').length,11);
 cleanup();dom.window.close();console.log('Network control integration passed: all 30 physical-twin links, site selection, site outage/restore, transport outage/restore, and IBS portfolio search. Type-selection popup layout is not verified by this jsdom check.');
+
 
 
 

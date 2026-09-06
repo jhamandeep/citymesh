@@ -32,3 +32,8 @@ The end-state remains partially demonstrated where the reference depends on prod
 
 ### Latest user request: entire-network 3D and end-to-end cabling
 Implemented an orbitable 30-site overview and site-level selectable cable geometry; endpoint/port inspector; ODF patch/pigtail/splice/trunk details; local copper Ethernet, radio fiber, RF jumpers, IBS splitter/coax branches, DC and grounding; ordered active-core-to-antenna traces; JSON cable schedules. The default synthetic portfolio generates 610 local segments and 110 antenna traces. All 38 transport paths are represented. The 3D campus is schematic; engineering-grade surveys, cable loss budgets and live per-port telemetry remain gaps. Pixel-level browser QA has not been performed. Independent tests verify trace continuity, geometry and controls.
+
+### Connected BIM evidence
+The equipment-only export is now complemented by a connected site IFC4 handoff. `lib/ifc-export.ts` exports distribution elements, cable centerlines, uniquely nested ports and realized connectivity relationships. `ifc-connectivity.test.mjs` independently parses all 30 exports and verifies 610 segments, 1,220 ports, owners, endpoint names, coordinate mapping, metadata and unique IDs. `network-controls.test.mjs` exercises the actual download action and checks the resulting IFC contents. This closes the local wiring-loss gap in exports; it does not establish BIM round-trip, external viewer certification or entire-campus federated export.
+
+IFC design reference: https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcRelConnectsPorts.htm (IFC4 entity signatures additionally checked against the installed web-ifc IFC4 schema).

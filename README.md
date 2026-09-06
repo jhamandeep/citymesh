@@ -52,3 +52,8 @@ The network home defaults to an orbitable 3D campus with all 30 sites and 38 sel
 Inter-site Ethernet services use optical trunks; Cat6A is local. The network layout, port names, connector schedule and lengths are synthetic design examples, not surveyed installation or field continuity records. Cable topology is generated from canonical asset IDs; new custom antennas remain unconnected until a mapping is implemented. No loss-budget, protection-sizing, coverage or live telemetry calculation is claimed.
 
 Validation: `node cabling.test.mjs` checks all generated endpoints, all antenna trace continuity, both core routes, removal behavior and finite Three.js tube geometry. The existing model, topology, IFC, and UI-control tests remain applicable. WebGL pixels and browser layout have not been visually validated.
+
+### Connected BIM handoff
+Each cable panel offers **Export connected BIM · IFC4**. This exports the selected site's equipment and generated distribution fixtures, sampled cable centerlines matching the 3D routing, uniquely owned termination ports (`IfcRelNests`), and `IfcRelConnectsPorts` relationships realized by `IfcCableSegment` objects. Cable specifications, connectors, service, transport-link IDs, estimated lengths and design provenance are included. The original equipment-only export remains available.
+
+Run `node ifc-connectivity.test.mjs` for parser verification across all 30 sites (610 cables, 1,220 ports). Exports cover local site wiring; remote sites, the intersite trunk geometry, tower structure and imported survey meshes are not bundled. Cable axes have no certified diameter/body model. External BIM tool interoperability and field accuracy remain unverified.
