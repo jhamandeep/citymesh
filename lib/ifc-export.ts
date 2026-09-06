@@ -1,11 +1,16 @@
 import { parseProject, type Project } from './site-model.ts';
 import {createCableCurve} from './cable-geometry.ts';
-import {buildSiteCabling} from './cabling.ts';
+import {buildSiteCabling,externalCable} from './cabling.ts';
+import * as THREE from 'three';
+import {createStructure,disposeObject} from './site-geometry.ts';
+import {siteDefinitions,networkLinks} from './private-network.ts';
+import {siteWorldPosition} from './network-geometry.ts';
+import {siteGeo} from './geo-rf.ts';
 // STEP strings use IFC Unicode escapes; doubled apostrophes preserve literal text.
 function stepText(value:string){let output='';for(let i=0;i<value.length;i++){const code=value.charCodeAt(i),c=value[i];output+=c==="'"?"''":c==='\\'||code<32||code>126?`\\X2\\${code.toString(16).toUpperCase().padStart(4,'0')}\\X0\\`:c;}return `'${output}'`;}
 async function guid(key:string){const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)));let n=BigInt(0);for(const v of hash.slice(0,16))n=n*BigInt(256)+BigInt(v);const alphabet='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';let out='';for(let i=0;i<22;i++){out=alphabet[Number(n%BigInt(64))]+out;n/=BigInt(64);}return `'${out}'`;}
 const real=(n:number)=>Number(n.toFixed(8)).toFixed(8);
-export async function exportIfc(input:Project,options:{includeCabling?:boolean}={}){const p=parseProject(input);const wiring=options.includeCabling?buildSiteCabling(p):{devices:[],cables:[]};const elementRefs=new Map<string,string>();const lines:string[]=[];const add=(entity:string)=>{lines.push(`#${lines.length+1}=${entity};`);return `#${lines.length}`;};
+async function buildSingleIfc(input:Project,options:{includeCabling?:boolean}={}){const p=parseProject(input);const wiring=options.includeCabling?buildSiteCabling(p):{devices:[],cables:[]};const elementRefs=new Map<string,string>();const lines:string[]=[];const add=(entity:string)=>{lines.push(`#${lines.length+1}=${entity};`);return `#${lines.length}`;};
  const origin=add('IFCCARTESIANPOINT((0.,0.,0.))'),up=add('IFCDIRECTION((0.,0.,1.))'),east=add('IFCDIRECTION((1.,0.,0.))'),world=add(`IFCAXIS2PLACEMENT3D(${origin},${up},${east})`),context=add(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.00001,${world},$)`),unit=add('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)'),units=add(`IFCUNITASSIGNMENT((${unit}))`);
  const project=add(`IFCPROJECT(${await guid(p.siteId+':project')},$,${stepText(p.name)},'Citymesh synthetic equipment model',$,$,${stepText(p.stage)},(${context}),${units})`),placement=add(`IFCLOCALPLACEMENT($,${world})`),site=add(`IFCSITE(${await guid(p.siteId+':site')},$,${stepText(p.name)},${stepText(p.survey.note)},$,${placement},$,$,.ELEMENT.,$,$,0.,$,$)`);
  add(`IFCRELAGGREGATES(${await guid(p.siteId+':aggregate')},$,$,$,${project},(${site}))`);const contained:string[]=[];
@@ -33,10 +38,41 @@ export async function exportIfc(input:Project,options:{includeCabling?:boolean}=
   add(`IFCRELCONNECTSPORTS(${await guid(c.id+':connection')},$,${stepText(c.label)},${stepText('Physical cable continuity; bidirectional design connection')},${ends[0]},${ends[1]},${cable})`);
  }
  if(contained.length)add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${await guid(p.siteId+':containment')},$,$,$,(${contained.join(',')}),${site})`);
- return `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME(${stepText(p.siteId+'.ifc')},${stepText(new Date().toISOString())},('Citymesh'),('Prototype'),'Citymesh','Citymesh','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${lines.join('\n')}\nENDSEC;\nEND-ISO-10303-21;\n`;
+ const text=`ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME(${stepText(p.siteId+'.ifc')},${stepText(new Date().toISOString())},('Citymesh'),('Prototype'),'Citymesh','Citymesh','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${lines.join('\n')}\nENDSEC;\nEND-ISO-10303-21;\n`;
+ return {text,lines,project,placement,site,context,units,world,up,east,elementRefs,portRefs};
 }
 
 
 
 
 
+
+export async function exportIfc(input:Project,options:{includeCabling?:boolean}={}){return (await buildSingleIfc(input,options)).text;}
+/** Remap STEP references without touching # characters inside quoted property strings. */
+function remapStep(line:string,offset:number,projectRef:string,root:string){return line.replace(/'(?:''|[^'])*'|#\d+/g,token=>token.startsWith("'")?token:token===projectRef?root:`#${Number(token.slice(1))+offset}`);}
+export async function exportPortfolioIfc(input:Record<string,Project>){
+ if(Object.keys(input).length!==siteDefinitions.length||siteDefinitions.some(s=>!input[s.id]||input[s.id].siteId!==s.id))throw new Error('Export requires all 30 correctly identified site projects.');
+ const portfolio=Object.fromEntries(siteDefinitions.map(s=>[s.id,parseProject(input[s.id])])),lines:string[]=[],owners=new Map<string,string>(),ports=new Map<string,string>(),placements=new Map<string,string>();let next=0,root='',context='',units='',world='',up='',east='',globalPlacement='';
+ const add=(entity:string)=>{const ref=`#${++next}`;lines.push(`${ref}=${entity};`);return ref;};
+ for(const p of Object.values(portfolio)){
+  const part=await buildSingleIfc(p,{includeCabling:true}),offset=next,ref=(r:string)=>`#${Number(r.slice(1))+offset}`;if(!root)root=ref(part.project);
+  const projectRoot=root;for(const line of part.lines){if(offset&&line.startsWith(part.project+'='))continue;lines.push(remapStep(line,offset,offset?part.project:'',projectRoot));}next=offset+part.lines.length;
+  if(!context){context=ref(part.context);units=ref(part.units);world=ref(part.world);up=ref(part.up);east=ref(part.east);globalPlacement=add(`IFCLOCALPLACEMENT($,${world})`);const index=lines.findIndex(l=>l.startsWith(root+'='));lines[index]=`${root}=IFCPROJECT(${await guid('citymesh:campus:project')},$,'Citymesh Austin private network','30 hypothetical sites with coordinated local wiring and transport',$,$,'Mixed site revisions',(${context}),${units});`;}
+  const pos=siteWorldPosition(p.siteId),point=add(`IFCCARTESIANPOINT((${real(pos.x)},${real(-pos.z)},0.))`),axis=add(`IFCAXIS2PLACEMENT3D(${point},${up},${east})`),placement=ref(part.placement);placements.set(p.siteId,placement);const index=lines.findIndex(l=>l.startsWith(placement+'='));lines[index]=`${placement}=IFCLOCALPLACEMENT($,${axis});`;
+  for(const [id,r] of part.elementRefs)owners.set(`${p.siteId}/${id}`,ref(r));for(const [id,r] of part.portRefs)ports.set(id,ref(r));
+  const structure=createStructure(siteDefinitions.find(s=>s.id===p.siteId)!.type);structure.updateMatrixWorld(true);const vertices:number[][]=[],faces:number[][]=[];structure.traverse(o=>{if(!(o instanceof THREE.Mesh))return;const positions=o.geometry.getAttribute('position'),base=vertices.length;for(let i=0;i<positions.count;i++){const v=new THREE.Vector3().fromBufferAttribute(positions,i).applyMatrix4(o.matrixWorld);vertices.push([v.x,-v.z,v.y]);}const indices=o.geometry.index;for(let i=0;i<(indices?.count||positions.count);i+=3)faces.push([0,1,2].map(j=>base+(indices?indices.getX(i+j):i+j)+1));});disposeObject(structure);
+  const pointList=add(`IFCCARTESIANPOINTLIST3D((${vertices.map(v=>'('+v.map(real).join(',')+')').join(',')}))`),tessellation=add(`IFCTRIANGULATEDFACESET(${pointList},$,.F.,(${faces.map(v=>'('+v.join(',')+')').join(',')}),$)`),body=add(`IFCSHAPEREPRESENTATION(${context},'Body','Tessellation',(${tessellation}))`),representation=add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${body}))`),structureElement=add(`IFCBUILDINGELEMENTPROXY(${await guid(p.siteId+':structure')},$,${stepText(p.siteId+' parametric structure')},'Demonstration mast, building, pole or foundation; not surveyed','Site structure',${placement},${representation},${stepText(p.siteId+'/STRUCTURE')},.NOTDEFINED.)`);add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${await guid(p.siteId+':structure:containment')},$,$,$,(${structureElement}),${ref(part.site)})`);
+  const geo=siteGeo(p.siteId),props=Object.entries({SiteId:p.siteId,Latitude:String(geo.lat),Longitude:String(geo.lon),CoordinateReference:'Local metres: X east, Y north, Z up; origin Austin 30.2672,-97.7431',PositionStatus:'Hypothetical placement; not a surveyed georeference',Revision:String(p.revision)}).map(([k,v])=>add(`IFCPROPERTYSINGLEVALUE(${stepText(k)},$,IFCLABEL(${stepText(v)}),$)`)),pset=add(`IFCPROPERTYSET(${await guid(p.siteId+':geographic')},$,'Citymesh_Location',$,(${props.join(',')}))`);add(`IFCRELDEFINESBYPROPERTIES(${await guid(p.siteId+':geographic:relation')},$,$,$,(${ref(part.site)}),${pset})`);
+ }
+ const transport:string[]=[];
+ for(const l of networkLinks){const c=externalCable(l,portfolio),wireless=l.kind==='microwave';if([c.from,c.to].some(end=>!owners.has(`${end.siteId}/${end.assetId}`)))throw new Error(`${l.id} has a missing site termination. Restore its gateway before exporting a connected campus.`);
+  const coords=(end:typeof c.from)=>{const offset=siteWorldPosition(end.siteId);return [offset.x+end.position[0],-(offset.z+end.position[2]),end.position[1]];},a=coords(c.from),b=coords(c.to),path=wireless?[a,b]:[a,[a[0],a[1]-1,.3],[b[0],b[1]-1,.3],b],points=path.map(v=>add(`IFCCARTESIANPOINT((${v.map(real).join(',')}))`)),curve=add(`IFCPOLYLINE((${points.join(',')}))`),shape=add(`IFCSHAPEREPRESENTATION(${context},'Axis','Curve3D',(${curve}))`),rep=add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${shape}))`);
+  const element=add(wireless?`IFCANNOTATION(${await guid(l.id+':wireless')},$,${stepText(c.label)},'Wireless air path; no physical intersite cable','Microwave',${globalPlacement},${rep})`:`IFCCABLESEGMENT(${await guid(l.id+':trunk')},$,${stepText(c.label)},${stepText(c.details)},'fiber',${globalPlacement},${rep},${stepText(l.id)},.CABLESEGMENT.)`);transport.push(element);
+  const ends:string[]=[];for(const end of [c.from,c.to]){const exportedPort=wireless?end.port:`${end.port} / trunk`;const key=`${end.siteId}/${end.assetId}/${exportedPort}`;let port=ports.get(key);if(!port){const point=add(`IFCCARTESIANPOINT((${real(end.position[0])},${real(-end.position[2])},${real(end.position[1])}))`),axis=add(`IFCAXIS2PLACEMENT3D(${point},${up},${east})`),local=add(`IFCLOCALPLACEMENT(${placements.get(end.siteId)},${axis})`);port=add(`IFCDISTRIBUTIONPORT(${await guid(key+':port')},$,${stepText(exportedPort)},${stepText(wireless?end.connector:`${end.connector}; internal tray ${end.port}`)},${stepText(wireless?'Wireless air interface':'Optical trunk')},${local},$,.SOURCEANDSINK.,.${wireless?'NOTDEFINED':'CABLE'}.,.COMMUNICATION.)`);ports.set(key,port);add(`IFCRELNESTS(${await guid(key+':nest')},$,$,$,${owners.get(`${end.siteId}/${end.assetId}`)},(${port}))`);}ends.push(port);}
+  add(`IFCRELCONNECTSPORTS(${await guid(l.id+':campusconnection')},$,${stepText(l.id)},${stepText(wireless?'Logical wireless connection; inspect the microwave path annotation':'Physical optical trunk continuity')},${ends[0]},${ends[1]},${wireless?'$':element})`);
+  const props=Object.entries({LinkId:l.id,FromSite:l.a,ToSite:l.b,Medium:l.kind,CapacityMbps:String(l.capacity),LatencyMs:String(l.latency),VLAN:String(l.vlan),EstimatedLengthMetres:String(c.length),LengthBasis:c.lengthBasis,PhysicalCable:String(!wireless),FromPort:c.from.port,ToPort:c.to.port}).map(([k,v])=>add(`IFCPROPERTYSINGLEVALUE(${stepText(k)},$,IFCLABEL(${stepText(v)}),$)`)),pset=add(`IFCPROPERTYSET(${await guid(l.id+':transportprops')},$,'Citymesh_Transport',$,(${props.join(',')}))`);add(`IFCRELDEFINESBYPROPERTIES(${await guid(l.id+':transportrel')},$,$,$,(${element}),${pset})`);
+ }
+ // Group world-coordinate transport paths without changing the 30 physical site placements.
+ const group=add(`IFCGROUP(${await guid('citymesh:transportgroup')},$,'Inter-site transport','31 optical trunks and 7 wireless air paths','Transport network')`);add(`IFCRELASSIGNSTOGROUP(${await guid('citymesh:transportmembers')},$,$,$,(${transport.join(',')}),$,${group})`);
+ return `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('citymesh-austin-30-sites.ifc',${stepText(new Date().toISOString())},('Citymesh'),('Prototype'),'Citymesh','Citymesh','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${lines.join('\n')}\nENDSEC;\nEND-ISO-10303-21;\n`;
+}

@@ -19,11 +19,11 @@ export async function loadSiteGlb(buffer:ArrayBuffer){if(buffer.byteLength>20*10
 
 
 
-export function createWiringFixtureMesh(e:Equipment,siteId:string):THREE.Object3D {
+export function createWiringFixtureMesh(e:Equipment,siteId:string,elevation:(id:string)=>number=()=>0):THREE.Object3D {
  if(!e.id.startsWith('W-MW-'))return createEquipmentMesh(e);
  const group=new THREE.Group();group.name=e.name;group.position.set(...e.position);
  const link=networkLinks.find(l=>e.id==='W-MW-'+l.id)!,here=siteById(siteId)!,remote=siteById(link.a===siteId?link.b:link.a)!;
- const direction=new THREE.Vector3((remote.x-here.x)*2.5,Math.max(3,remote.height-2)-e.position[1],(remote.y-here.y)*2.5).normalize();
+ const direction=new THREE.Vector3((remote.x-here.x)*2.5,Math.max(3,remote.height-2)-e.position[1]+elevation(remote.id)-elevation(siteId),(remote.y-here.y)*2.5).normalize();
  const dish=new THREE.Group();dish.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),direction);group.add(dish);
  const add=(name:string,g:THREE.BufferGeometry,pos:[number,number,number],color='#e5edf2')=>{const m=new THREE.Mesh(g,surface(color));m.name=name;m.position.set(...pos);dish.add(m);return m;};
  const profile=Array.from({length:25},(_,i)=>{const r=i/24*.6;return new THREE.Vector2(r,-r*r*.55);});
