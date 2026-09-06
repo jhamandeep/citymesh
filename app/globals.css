@@ -8,3 +8,4 @@
 /* Readable control and body sizing across viewport widths. */
 .metric-label,.scenario,.demand-label,.primary-button,.asset-toggle,.map-tools button,dl{font-size:.875rem}.heading p,.panel-intro,.scenario-description,.impact p{font-size:.875rem}.metric small,.live,.legend,.range-labels,.asset-heading span,.asset-status,.city-chip small,.sim-time,.section-kicker,footer,.map-caption,.eyebrow{font-size:.75rem}.panel-intro,.scenario-description{line-height:1.5}.scenario-description{min-height:42px}.range-labels{margin-top:15px}.map-node text{font-size:13px}
 
+.site-entry{display:flex;gap:7px;align-items:center;text-decoration:none;font-size:14px;color:#287e64}.asset-site-link{margin:14px 0}.condition-control>span{font-size:13px;color:#7290a1}@media(max-width:520px){.header-right .demo-badge,.header-right .avatar{display:none}.site-entry{font-size:12px}}

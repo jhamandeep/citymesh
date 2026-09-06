@@ -36,3 +36,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+.test-site-bundle.mjs
+.test-network-bundle.mjs

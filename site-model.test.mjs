@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {createProject,parseProject,designChecks,changeSummary,transition,exportInventory} from './lib/site-model.ts';
+const p=createProject();assert.deepEqual(parseProject(JSON.parse(JSON.stringify(p))),p);assert.equal(designChecks(p).length,0);
+const collision=structuredClone(p);collision.equipment[1].position=[...collision.equipment[0].position];assert.ok(designChecks(collision).some(c=>c.message.includes('clash')));assert.throws(()=>transition(collision,'approved'),/design errors/);
+const high=structuredClone(p);high.equipment[0].position[1]=25;assert.ok(designChecks(high).some(c=>c.message.includes('24 m')));
+const below=structuredClone(p);below.equipment[0].position[1]=0;assert.ok(designChecks(below).some(c=>c.message.includes('below ground')));
+const power=structuredClone(p);power.equipment[0].power=3500;assert.ok(designChecks(power).some(c=>c.message.includes('Power')));
+const changed=structuredClone(p);changed.equipment[0].azimuth=15;changed.equipment.pop();changed.equipment.push({...p.equipment[0],id:'NEW-ANT'});const delta=changeSummary(changed);assert.equal(delta.added.length,1);assert.equal(delta.removed.length,1);assert.equal(delta.modified.length,1);
+assert.throws(()=>transition(p,'accepted'),/sequence/);let flow=transition(p,'approved');flow=transition(flow,'building');assert.throws(()=>transition(flow,'accepted'),/Complete every/);
+flow.work=flow.work.map(w=>({...w,complete:true,note:'Verified on site. Test reference DEMO-001.'}));flow.issues.push({id:'ISS-1',assetId:'ANT-A',title:'Unsafe mount',severity:'high',status:'open',note:'Requires review',createdAt:new Date().toISOString()});assert.throws(()=>transition(flow,'accepted'),/high-severity/);
+flow.issues[0].status='resolved';flow=transition(flow,'accepted');assert.deepEqual(flow.baseline,flow.equipment);const rev=transition(flow,'draft');assert.equal(rev.revision,2);assert.ok(rev.work.every(w=>!w.complete&&!w.note));assert.equal(rev.history.length,4);
+for(const invalid of [null,{},[],{...p,schemaVersion:2},{...p,equipment:[...p.equipment,p.equipment[0]]},{...p,work:[]},{...p,siteId:'foreign'},{...p,equipment:[{...p.equipment[0],position:[NaN,0,0]}]},{...p,equipment:[{...p.equipment[0],size:[0,1,1]}]}])assert.throws(()=>parseProject(invalid));
+const safe=structuredClone(p);safe.equipment[0].name='=HYPERLINK("https://example.com")';assert.ok(exportInventory(safe).includes("\"'=HYPERLINK"));assert.equal(exportInventory(p).split('\r\n').length,p.equipment.length+1);
+console.log('Site model checks passed: import validation, geometry conflicts, bounds, power, revision deltas, approval gates, evidence gates, issue gates, acceptance, revision reset, and CSV escaping.');

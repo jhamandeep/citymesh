@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import {createProject} from './lib/site-model.ts';
+import {createStructure,createEquipmentMesh,loadSiteGlb,disposeObject} from './lib/site-geometry.ts';
+for(const [type,height] of Object.entries({GBT:24,RTT:20,IBS:12,CORE:4,SMALL_CELL:10})){const structure=createStructure(type);const box=new THREE.Box3().setFromObject(structure);assert.ok(box.max.y>=height&&box.max.y<height+.2,type);disposeObject(structure);}
+const p=createProject();const mast=createStructure();assert.equal(mast.children.length,112);const bounds=new THREE.Box3().setFromObject(mast);assert.ok(bounds.max.y>=24&&bounds.max.y<24.2);
+for(const e of p.equipment){const mesh=createEquipmentMesh(e);mesh.updateMatrixWorld(true);const size=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3());assert.ok(Math.abs(size.y-e.size[1])<1e-6);assert.equal(mesh.userData.logicalId,e.logicalId);assert.equal(mesh.position.y,e.position[1]);disposeObject(mesh);}
+const antenna=createEquipmentMesh(p.equipment[0]);antenna.updateMatrixWorld(true);const front=new THREE.Raycaster(new THREE.Vector3(0,22,-5),new THREE.Vector3(0,0,1)).intersectObject(antenna)[0];const back=new THREE.Raycaster(new THREE.Vector3(0,22,5),new THREE.Vector3(0,0,-1)).intersectObject(antenna)[0];assert.equal(front.object.userData.assetId,'ANT-A');assert.ok(Math.abs(front.point.distanceTo(back.point)-.22)<1e-6);
+function glb(json,bin){const j=Buffer.from(JSON.stringify(json));const jb=Buffer.alloc(Math.ceil(j.length/4)*4,32);j.copy(jb);const out=Buffer.alloc(12+8+jb.length+8+bin.length);out.writeUInt32LE(0x46546c67,0);out.writeUInt32LE(2,4);out.writeUInt32LE(out.length,8);out.writeUInt32LE(jb.length,12);out.writeUInt32LE(0x4e4f534a,16);jb.copy(out,20);out.writeUInt32LE(bin.length,20+jb.length);out.writeUInt32LE(0x004e4942,24+jb.length);bin.copy(out,28+jb.length);return out.buffer.slice(out.byteOffset,out.byteOffset+out.byteLength);}
+const bin=Buffer.from(new Float32Array([0,0,0,2,0,0,0,3,0]).buffer);const json={asset:{version:'2.0'},scene:0,scenes:[{nodes:[0]}],nodes:[{mesh:0}],meshes:[{primitives:[{attributes:{POSITION:0}}]}],buffers:[{byteLength:36}],bufferViews:[{buffer:0,byteLength:36}],accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[2,3,0]}]};
+const loaded=await loadSiteGlb(glb(json,bin));assert.equal(loaded.extent,3);assert.equal(loaded.bounds.max.x,2);disposeObject(loaded.scene);await assert.rejects(()=>loadSiteGlb(new ArrayBuffer(8)),/GLB/);
+const external=structuredClone(json);external.buffers[0].uri='https://invalid.example/geometry.bin';await assert.rejects(()=>loadSiteGlb(glb(external,bin)),/self-contained/);
+disposeObject(mast);disposeObject(antenna);console.log('3D geometry checks passed: mast bounds, equipment dimensions and identities, real raycast picking, surface-to-surface measurement, valid GLB loading, and invalid/external-resource rejection.');
+
