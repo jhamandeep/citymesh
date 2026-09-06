@@ -11,7 +11,7 @@ Reference reviewed on 2026-09-06: https://www.ericsson.com/en/network-services/d
 | Open BIM, mixed-vendor assets | `lib/ifc-export.ts`, asset product fields | Independent IFC4 parser/geometry/metadata tests pass; export is equipment only, no full BIM round-trip. |
 | Plan and analyze | `designChecks`, `changeSummary`, CSV and IFC export | Conflict, limits, power, revision-delta tests pass; no AI anomaly detection or engineering certification. |
 | Predict and design | Draft geometry editor and baseline overlay | Control integration covers invalid design rejection and valid approval; advanced structural/RF prediction remains absent. |
-| Build and collaborate | Field checks, evidence notes, JSON handoff, acceptance baseline | Full draft→approved→building→accepted→new-revision integration passes; no multi-user server synchronization or AR. |
+| Build and collaborate | Field checks, evidence notes, JSON handoff, acceptance baseline | Full draft→approved→building→accepted→new-revision integration passes; manual versioned shared portfolio is available; per-user roles, live co-editing and AR remain absent. |
 | Operate and maintain | Condition controls, asset-linked issues, history, city mapping | Issue lifecycle and network model tests pass; live telemetry not connected. |
 | City infrastructure and connectivity | 30-site `/` private-network simulator plus a physical workspace for every site | 450 failure/scenario/demand combinations; dual-core failover, ring redundancy, access isolation and physical hardware degradation tests pass. |
 | Deploy a usable end product | Same private Sites project, `/sites` route | Version 4 deployment succeeded and the private /sites route returned HTTP 200 with the connected BIM control. Each subsequent publish requires its own status and HTTP checks. |
@@ -27,7 +27,7 @@ The end-state remains partially demonstrated where the reference depends on prod
 - Real Three.js geometry checks cover mast, rooftop, indoor floors, street pole and core-room bounds.
 - Control integration verifies direct navigation to all five site types and all 30 physical-twin links, search and site/link outage restoration.
 - Saved physical faults reduce throughput or disconnect sites in the shared network routing calculation.
-- Production integration, live telemetry and shared multi-user state remain outside the demonstrated prototype.
+- The private deployment includes manual shared portfolio storage. Live telemetry and per-user collaboration controls remain outside the demonstrated prototype.
 
 
 ### Latest user request: entire-network 3D and end-to-end cabling
@@ -44,3 +44,7 @@ IFC design reference: https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE
 
 ### Survey registration evidence
 The survey viewer now supports persisted manual translation, yaw and scale, with a translucent equipment/cabling overlay. Pure Three.js tests verify transformed world coordinates, bounds, raycasts and original material restoration. Control integration verifies saved/restored alignment and overlay state; legacy survey records default to identity transforms. No supplied survey/control points are available, so a real-site registration residual and visual alignment accuracy remain unverified. Shared collaboration and live telemetry remain open gaps.
+
+
+### Shared persistence and conflict evidence
+A D1-backed whole-portfolio API and explicit publish/load controls now provide cross-device snapshot exchange. Tests verify 30-site round trips, same-base competing publishers (one succeeds, one conflicts), full rollback after a mid-batch failure, identity checks, same-origin writes, and preserving local edits after API failures. Local workerd/D1 integration passes. The Site remains owner-private; no collaborators were invited, no real user approval identities are implemented, and survey binaries are not shared. Production database provisioning and migration must be checked after this publish.

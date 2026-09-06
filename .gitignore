@@ -40,3 +40,4 @@ next-env.d.ts
 .test-site-bundle.mjs
 .test-network-bundle.mjs
 .test-survey-bundle.mjs
+.test-shared-bundle.mjs
