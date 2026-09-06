@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Equipment } from './site-model';
-import type { SiteType } from './private-network';
+import {siteById,networkLinks,type SiteType} from './private-network.ts';
 export const surface=(color:string,opacity=1)=>new THREE.MeshStandardMaterial({color,roughness:.7,metalness:.25,transparent:opacity<1,opacity});
 export function disposeObject(group:THREE.Object3D){group.traverse(o=>{if(o instanceof THREE.Mesh||o instanceof THREE.Line||o instanceof THREE.Sprite){if(!(o instanceof THREE.Sprite))o.geometry.dispose();const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>{Object.values(m).forEach(v=>{if(v instanceof THREE.Texture)v.dispose();});m.dispose();});}});}
 export function createStructure(type:SiteType='GBT'){const structure=new THREE.Group();structure.name=type+' demonstration structure';
@@ -18,3 +18,21 @@ export function createEquipmentMesh(e:Equipment,selected=false,ghost=false){cons
 export async function loadSiteGlb(buffer:ArrayBuffer){if(buffer.byteLength>20*1024*1024)throw new Error('Choose a self-contained GLB smaller than 20 MB.');if(buffer.byteLength<20||new DataView(buffer).getUint32(0,true)!==0x46546c67)throw new Error('Choose a binary GLB model.');const manager=new THREE.LoadingManager();manager.setURLModifier(url=>{if(url.startsWith('blob:')||url.startsWith('data:'))return url;throw new Error('Only self-contained GLB models are supported.');});const gltf=await new GLTFLoader(manager).parseAsync(buffer,'');const bounds=new THREE.Box3().setFromObject(gltf.scene);const size=bounds.getSize(new THREE.Vector3());const extent=Math.max(size.x,size.y,size.z);if(!Number.isFinite(extent)||extent<=0||extent>10000){disposeObject(gltf.scene);throw new Error('Model has empty or unsupported bounds.');}return {scene:gltf.scene,bounds,extent};}
 
 
+
+export function createWiringFixtureMesh(e:Equipment,siteId:string):THREE.Object3D {
+ if(!e.id.startsWith('W-MW-'))return createEquipmentMesh(e);
+ const group=new THREE.Group();group.name=e.name;group.position.set(...e.position);
+ const link=networkLinks.find(l=>e.id==='W-MW-'+l.id)!,here=siteById(siteId)!,remote=siteById(link.a===siteId?link.b:link.a)!;
+ const direction=new THREE.Vector3((remote.x-here.x)*2.5,Math.max(3,remote.height-2)-e.position[1],(remote.y-here.y)*2.5).normalize();
+ const dish=new THREE.Group();dish.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),direction);group.add(dish);
+ const add=(name:string,g:THREE.BufferGeometry,pos:[number,number,number],color='#e5edf2')=>{const m=new THREE.Mesh(g,surface(color));m.name=name;m.position.set(...pos);dish.add(m);return m;};
+ const profile=Array.from({length:25},(_,i)=>{const r=i/24*.6;return new THREE.Vector2(r,-r*r*.55);});
+ const bowl=add('Parabolic reflector · 1.2 m diameter',new THREE.LatheGeometry(profile,48),[0,0,0]);bowl.rotation.x=Math.PI/2;(bowl.material as THREE.MeshStandardMaterial).side=THREE.DoubleSide;
+ add('Reflector rim',new THREE.TorusGeometry(.6,.022,8,48),[0,0,.198]);
+ add('Feed horn',new THREE.BoxGeometry(.12,.12,.2),[0,0,.4],'#acb8c4');
+ for(const x of [-.4,.4]){const a=new THREE.Vector3(x,0,.16),b=new THREE.Vector3(0,0,.4),d=b.clone().sub(a);const arm=add('Feed support',new THREE.CylinderGeometry(.015,.015,d.length(),6),[0,0,0],'#71899a');arm.position.copy(a.add(b).multiplyScalar(.5));arm.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());}
+ add('Outdoor radio / ODU',new THREE.BoxGeometry(.3,.35,.18),[0,-.28,-.16],'#668da7');
+ const mount=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,1.8,8),surface('#8396a4'));mount.name='Dish mounting pole';mount.position.set(0,-.5,-.3);group.add(mount);
+ const port=new THREE.Mesh(new THREE.SphereGeometry(.055,10,8),surface('#66aaff'));port.name='Weatherproof GE / PoE termination';port.position.set(0,-.45,0);group.add(port);
+ group.userData={fixtureId:e.id,siteId,peer:remote.id};return group;
+}
