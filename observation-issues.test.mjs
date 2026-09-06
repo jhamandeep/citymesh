@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {createPortfolio,parseProject,transition} from './lib/site-model.ts';
+import {parseObservations} from './lib/observations.ts';
+import {issueFromObservation,observationTarget} from './lib/observation-issues.ts';
+const portfolio=createPortfolio(),p=portfolio['GBT-01'],now=Date.now();const [r,link]=parseObservations({schema:1,source:'Test monitor',observations:[{kind:'equipment',siteId:p.siteId,assetId:'RRU-A',observedAt:new Date(now).toISOString(),state:'down',temperatureC:75},{kind:'link',linkId:'L02',observedAt:new Date(now).toISOString(),state:'degraded'}]},portfolio,now);
+const first=issueFromObservation(p,r,now);assert.equal(first.created,true);assert.equal(first.issue.assetId,'RRU-A');assert.equal(first.issue.severity,'high');assert.equal(first.issue.observation.source,r.source);assert.match(first.issue.note,/75 °C/);assert.deepEqual(first.project.equipment,p.equipment);assert.equal(p.issues.length,0);assert.deepEqual(parseProject(JSON.parse(JSON.stringify(first.project))),first.project);
+assert.equal(issueFromObservation(first.project,r).created,false);assert.equal(issueFromObservation(first.project,{...r,observedAt:new Date(now+1000).toISOString()}).created,false);
+const resolved={...first.project,issues:first.project.issues.map(i=>({...i,status:'resolved'}))};assert.equal(issueFromObservation(resolved,r).created,false);assert.equal(issueFromObservation(resolved,{...r,observedAt:new Date(now+1000).toISOString()}).created,true);
+assert.equal(observationTarget(p,link).assetId,'CAB-01');assert.equal(observationTarget(portfolio['CORE-01'],link).assetId,'GW-A');assert.equal(observationTarget(portfolio['IBS-01'],link),null);assert.throws(()=>issueFromObservation(portfolio['IBS-01'],r),/map/);assert.throws(()=>issueFromObservation(p,{...r,state:'up'}),/down/);
+assert.throws(()=>parseProject({...first.project,issues:[{...first.issue,observation:{...first.issue.observation,state:'invented'}}]}),/reference/);
+const build={...first.project,stage:'building',work:first.project.work.map(w=>({...w,complete:true,note:'Test evidence'}))};assert.throws(()=>transition(build,'accepted'),/high-severity/);
+console.log('PASS: immutable issue evidence, JSON persistence, duplicate/open-fault suppression, resolved recurrence, link-endpoint mapping, invalid references and high-severity acceptance gate.');
