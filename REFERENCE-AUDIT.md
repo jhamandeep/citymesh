@@ -48,3 +48,6 @@ The survey viewer now supports persisted manual translation, yaw and scale, with
 
 ### Shared persistence and conflict evidence
 A D1-backed whole-portfolio API and explicit publish/load controls now provide cross-device snapshot exchange. Tests verify 30-site round trips, same-base competing publishers (one succeeds, one conflicts), full rollback after a mid-batch failure, identity checks, same-origin writes, and preserving local edits after API failures. Local workerd/D1 integration passes. The Site remains owner-private; no collaborators were invited, no real user approval identities are implemented, and survey binaries are not shared. Production database provisioning and migration must be checked after this publish.
+
+### Revision review and restoration evidence
+Shared revisions now retain all 30 project records in the database. Historical review compares the selected snapshot against the current browser state and restores only into the browser; a later publish creates a new revision. Tests verify immutable prior values after later publishes, keyset pagination, pre-history current-version capture, rollback during snapshot creation, and explicit restore controls. This improves design/as-built review and traceability but does not provide per-user sign-off identities, automatic survey reconstruction or live network ingestion.

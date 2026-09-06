@@ -41,3 +41,4 @@ next-env.d.ts
 .test-network-bundle.mjs
 .test-survey-bundle.mjs
 .test-shared-bundle.mjs
+.test-history-bundle.mjs
