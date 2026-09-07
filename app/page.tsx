@@ -3,57 +3,1169 @@ import ThemeSwitch from '@/components/twin/theme-switch';
 import FullscreenButton from '@/components/twin/fullscreen-button';
 /* Hydrate browser-local portfolio state and expose keyboard-operable SVG diagram nodes. */
 /* oxlint-disable react/react-compiler, jsx-a11y/prefer-tag-over-role */
-import {useCallback,useEffect,useMemo,useState} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/twin/site-link';
-import {Network,Server,RadioTower,Building2,Wifi,Activity,Zap,Search,ArrowUpRight,ChevronRight,Cable,RotateCcw,Download,Upload,Layers} from 'lucide-react';
-import {Slider} from '@/components/ui/slider';
-import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/components/ui/select';
-import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
-import {siteDefinitions,siteById,networkLinks,networkScenarios,simulateNetwork,type NetworkScenario,type SiteType} from '@/lib/private-network';
-import {createPortfolio,readPortfolio,siteCondition,STORAGE_KEY,type Project} from '@/lib/site-model';
+import {
+  Network,
+  Server,
+  RadioTower,
+  Building2,
+  Wifi,
+  Activity,
+  Zap,
+  Search,
+  ArrowUpRight,
+  ChevronRight,
+  Cable,
+  RotateCcw,
+  Download,
+  Upload,
+  Layers,
+} from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import {
+  siteDefinitions,
+  siteById,
+  networkLinks,
+  networkScenarios,
+  simulateNetwork,
+  type NetworkScenario,
+  type SiteType,
+} from '@/lib/private-network';
+import {
+  createPortfolio,
+  readPortfolio,
+  siteCondition,
+  STORAGE_KEY,
+  type Project,
+} from '@/lib/site-model';
 import SharedPortfolioPanel from '@/components/twin/shared-portfolio-panel';
 import './network.css';
 import ObservationsPanel from '@/components/twin/observations-panel';
-import {observationScenario,type Observation} from '@/lib/observations';
-import {microwaveExclusions,type MicrowaveAssessment} from '@/lib/microwave-assessment';
-import type {Environment} from '@/lib/environment-model';
+import { observationScenario, type Observation } from '@/lib/observations';
+import {
+  microwaveExclusions,
+  type MicrowaveAssessment,
+} from '@/lib/microwave-assessment';
+import type { Environment } from '@/lib/environment-model';
 import GeoRF from '@/components/twin/geo-rf';
 import NetworkViewer from '@/components/twin/network-viewer';
-import CablingPanel, {CableDetails} from '@/components/twin/cabling-panel';
-import {externalCable,buildSiteCabling} from '@/lib/cabling';
-const typeIcons={GBT:RadioTower,RTT:Building2,IBS:Building2,SMALL_CELL:Wifi,CORE:Server};
-const typeLabel={GBT:'Ground-based tower',RTT:'Rooftop tower',IBS:'In-building system',SMALL_CELL:'Small cell',CORE:'Private network core'};
-export default function Home(){
- const [observationsEnabled,setObservationsEnabled]=useState(false),[observations,setObservations]=useState<{records:Observation[];now:number}>({records:[],now:0});const receiveObservations=useCallback((records:Observation[],now:number)=>setObservations(previous=>JSON.stringify(previous.records)===JSON.stringify(records)?previous:{records,now}),[]);
- const [exportEnvironment,setExportEnvironment]=useState<Environment>(),[includeEnvironment,setIncludeEnvironment]=useState(false);const [losApplied,setLosApplied]=useState(false),[microwaveAssessment,setMicrowaveAssessment]=useState<MicrowaveAssessment|null>(null);const [bimBusy,setBimBusy]=useState(false);const [localCableId,setLocalCableId]=useState(''),[selectedAsset,setSelectedAsset]=useState('');const [view,setView]=useState('3d');const [portfolio,setPortfolio]=useState<Record<string,Project>>(()=>createPortfolio());const [selected,setSelected]=useState('GBT-01');const [selectedLink,setSelectedLink]=useState<string|null>(null);const [scenario,setScenario]=useState<NetworkScenario>('normal');const [demand,setDemand]=useState(100);const [failedSites,setFailedSites]=useState<string[]>([]);const [failedLinks,setFailedLinks]=useState<string[]>([]);const [query,setQuery]=useState('');const [filter,setFilter]=useState('all');const [layer,setLayer]=useState('all');const [message,setMessage]=useState('');
- useEffect(()=>{const refresh=()=>{try{setPortfolio(readPortfolio(localStorage.getItem(STORAGE_KEY)));}catch{setMessage('The saved portfolio could not be loaded. Sample sites are shown.');}};refresh();const id=new URLSearchParams(window.location.search).get('site');if(id&&siteById(id))setSelected(id);const link=new URLSearchParams(window.location.search).get('link');if(networkLinks.some(l=>l.id===link))setSelectedLink(link);window.addEventListener('storage',refresh);window.addEventListener('focus',refresh);return()=>{window.removeEventListener('storage',refresh);window.removeEventListener('focus',refresh);};},[]);
- const observed=useMemo(()=>observationScenario(portfolio,observations.records,observationsEnabled,observations.now),[portfolio,observations,observationsEnabled]);const operatingPortfolio=observed.portfolio;const operatingLinks=useMemo(()=>[...failedLinks,...observed.links],[failedLinks,observed.links]);
- const inherited=useMemo(()=>Object.values(operatingPortfolio).filter(p=>siteCondition(p).offline).map(p=>p.siteId),[operatingPortfolio]);const factors=useMemo(()=>Object.fromEntries(Object.values(operatingPortfolio).map(p=>[p.siteId,siteCondition(p).radioFactor])),[operatingPortfolio]);
- const losExcluded=useMemo(()=>microwaveExclusions(microwaveAssessment,losApplied),[microwaveAssessment,losApplied]);const baselineResult=useMemo(()=>simulateNetwork(scenario,demand,[...failedSites,...inherited],operatingLinks,factors),[scenario,demand,failedSites,operatingLinks,inherited,factors]);const result=useMemo(()=>losExcluded.length?simulateNetwork(scenario,demand,[...failedSites,...inherited],[...operatingLinks,...losExcluded],factors):baselineResult,[scenario,demand,failedSites,operatingLinks,inherited,factors,losExcluded,baselineResult]);
- const site=result.states.find(s=>s.id===selected)!;const project=portfolio[selected];const SiteIcon=typeIcons[site.type];const transport=networkLinks.find(l=>l.id===selectedLink);const ti=transport?networkLinks.indexOf(transport):-1;
- const visible=result.states.filter(s=>(filter==='all'||s.type===filter)&&`${s.id} ${s.name} ${s.zone}`.toLowerCase().includes(query.toLowerCase()));const bad=result.states.filter(s=>s.status!=='online');const route=site.route||[];const activeLinks=result.broken.filter(b=>!b).length;
- const localCable=buildSiteCabling(project).cables.find(c=>c.id===localCableId),asset=project.equipment.find(e=>e.id===selectedAsset);const selectSite=(id:string)=>{setSelected(id);setSelectedLink(null);setLocalCableId("");setSelectedAsset("");};
- const exportPortfolio=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(portfolio,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='citymesh-private-network-30-sites.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
- return <div className="private-network"><header className="topbar"><Link className="brand" href="/"><span className="brand-icon"><Network size={23}/></span>citymesh<span className="brand-divider"/><span className="product-label">PRIVATE NETWORK TWIN</span></Link><div className="header-right"><ThemeSwitch/><FullscreenButton/><a className="site-entry" href="#geo-rf">Austin map & RF layers</a><Link className="site-entry" href={`/sites?site=${selected}`}>Open 3D site <ArrowUpRight size={16}/></Link><span className="demo-badge"><span/> Synthetic campus · 30 sites</span></div></header>
- <main><div className="heading"><div><div className="eyebrow">PRIVATE 5G / LTE <ChevronRight size={13}/> CAMPUS OPERATIONS</div><h1>One network. Every site connected.</h1><p>Explore the entire private network, then inspect the physical details of any site.</p></div><div className="portfolio-actions"><label><input type="checkbox" checked={includeEnvironment} disabled={!exportEnvironment||bimBusy} onChange={e=>setIncludeEnvironment(e.target.checked)}/>Include terrain & buildings in BIM</label><button disabled={bimBusy} onClick={async()=>{setBimBusy(true);try{const {exportPortfolioIfc}=await import('@/lib/ifc-export');const text=await exportPortfolioIfc(portfolio,includeEnvironment?exportEnvironment:undefined),url=URL.createObjectURL(new Blob([text],{type:'application/x-step'})),a=document.createElement('a');a.href=url;a.download=includeEnvironment?'citymesh-austin-30-sites-with-environment.ifc':'citymesh-austin-30-sites.ifc';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setMessage(includeEnvironment?'Coordinated IFC4 exported with sourced Austin terrain and buildings. Unknown heights remain footprint annotations.':'Coordinated IFC4 exported: all 30 sites, local cabling and 38 transport paths. Microwave paths are wireless annotations.');}catch(e){setMessage(e instanceof Error?e.message:'Unable to export the coordinated BIM model.');}finally{setBimBusy(false);}}}><Download size={16}/>{bimBusy?'Preparing BIM…':'Export 30-site BIM'}</button><button onClick={exportPortfolio}><Download size={16}/> Export 30-site portfolio</button><label><Upload size={16}/> Import portfolio<input type="file" accept=".json" aria-label="Import private network portfolio JSON" onChange={async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;try{if(file.size>10*1024*1024)throw new Error('Portfolio must be smaller than 10 MB.');const raw=await file.text(),data=JSON.parse(raw);if(!data||typeof data!=='object'||Object.keys(data).length!==30)throw new Error('Import a complete 30-site portfolio export.');const next=readPortfolio(raw);if(Object.keys(next).length!==30)throw new Error('Invalid portfolio.');localStorage.setItem(STORAGE_KEY,JSON.stringify(next));setPortfolio(next);setMessage('All 30 site projects imported. Physical conditions and network impacts updated.');}catch(err){setMessage(err instanceof Error?err.message:'Unable to import portfolio.');}}}/></label></div></div>
- {observationsEnabled&&<output className="network-notice">Observation overlay active · {observations.records.length} fresh reports. Routing and capacity remain simulated.</output>}
- {message&&<output className="network-notice">{message}<button aria-label="Dismiss message" onClick={()=>setMessage('')}>×</button></output>}
- <section className="metrics">{[{title:'Sites reachable',value:`${result.online}`,unit:'/ 30',note:`${(result.online/30*100).toFixed(1)}% network availability`,icon:Network},{title:'Transport links available',value:String(activeLinks),unit:`/ ${networkLinks.length}`,note:'Fiber · microwave · Ethernet',icon:Cable},{title:'Delivered throughput',value:(result.delivered/1000).toFixed(2),unit:'Gbps',note:`${(result.requested/1000).toFixed(2)} Gbps requested`,icon:Activity},{title:'Average path latency',value:result.latency.toFixed(1),unit:'ms',note:`${bad.length} sites need attention`,icon:Zap}].map(m=><article className="metric" key={m.title}><div className="metric-label">{m.title}<m.icon size={17}/></div><div className="metric-value">{m.value}<span>{m.unit}</span></div><small>{m.note}</small></article>)}</section>
- <SharedPortfolioPanel projects={portfolio} onLoad={next=>{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));setPortfolio(next);}}/><section className="network-workspace"><aside className="network-directory"><div className="directory-title"><h2>Site portfolio</h2><span>30</span></div><div className="network-search"><Search size={15}/><input aria-label="Search network sites" placeholder="Search sites…" value={query} onChange={e=>setQuery(e.target.value)}/></div><Select value={filter} onValueChange={v=>{if(v)setFilter(v);}}><SelectTrigger aria-label="Filter site type"><SelectValue>{filter==='all'?'All site types':typeLabel[filter as SiteType]}</SelectValue></SelectTrigger><SelectContent><SelectItem value="all">All site types · 30</SelectItem>{(['GBT','RTT','IBS','SMALL_CELL','CORE'] as SiteType[]).map(type=><SelectItem value={type} key={type}>{typeLabel[type]} · {siteDefinitions.filter(s=>s.type===type).length}</SelectItem>)}</SelectContent></Select><div className="directory-sites">{visible.map(s=>{const Icon=typeIcons[s.type];return <button key={s.id} className={selected===s.id?'selected':''} onClick={()=>selectSite(s.id)}><Icon size={17}/><span><strong>{s.id}</strong><small>{s.name}</small></span><i className={`status-dot ${s.status==='offline'?'red':s.status==='degraded'?'amber':''}`}/></button>;})}{!visible.length&&<p>No matching sites.</p>}</div><div className="directory-bottom">{visible.length} of 30 sites shown<br/>All sites have individual 3D models</div></aside>
- <section className="network-map-panel"><div className="panel-head"><div><h2>Private network connectivity</h2><span>Select a site or transport link to inspect its dependencies</span></div><div className="network-view-toggle"><button aria-pressed={view==="3d"} onClick={()=>setView("3d")}>3D network</button><button aria-pressed={view==="2d"} onClick={()=>setView("2d")}>2D topology</button></div></div><div className="network-map"><details className="network-layers"><summary><Layers size={13}/> Links</summary><div className="compact-link-options">{['all','fiber','microwave','ethernet'].map(l=><button key={l} aria-pressed={layer===l} className={layer===l?'active':''} onClick={()=>setLayer(l)}>{l==='all'?'All links':l}</button>)}</div></details>
- <div style={{display:view==="2d"?"block":"none"}}><svg className="network-topology" viewBox="0 0 1000 700" aria-label="Thirty-site private network connectivity diagram"><defs><pattern id="campus-grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" fill="none" stroke="#e1e8e6" strokeWidth=".7"/></pattern></defs><rect width="1000" height="700" fill="#f2f7f5"/><rect width="1000" height="700" fill="url(#campus-grid)"/><g className="campus-zones"><rect x="55" y="58" width="880" height="165" rx="18"/><rect x="55" y="245" width="880" height="190" rx="18"/><rect x="55" y="460" width="880" height="195" rx="18"/></g><g className="districts"><text x="60" y="45">NORTH CAMPUS</text><text x="60" y="237">CENTRAL / WEST CAMPUS</text><text x="60" y="452">SOUTH CAMPUS</text></g>
- {networkLinks.map((l,i)=>{if(layer!=='all'&&l.kind!==layer)return null;const a=siteById(l.a)!,b=siteById(l.b)!;const isPath=route.includes(i);const color=result.broken[i]?'#d97972':result.loads[i]>l.capacity?'#d3a04c':l.kind==='microwave'?'#859ad0':l.kind==='ethernet'?'#94a69d':'#4aab8d';return <g role="button" tabIndex={0} aria-label={`${l.id}: ${l.a} to ${l.b}, ${l.kind}, ${result.broken[i]?'offline':'available'}`} key={l.id} className="transport-edge" onClick={()=>setSelectedLink(l.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelectedLink(l.id);}}}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="15"/><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selectedLink===l.id?'#235a73':color} strokeWidth={selectedLink===l.id?5:isPath?3.8:1.7} strokeDasharray={result.broken[i]?'5 6':l.kind==='microwave'?'7 5':undefined}/>{isPath&&!result.broken[i]&&<line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="white" strokeWidth="1.6" strokeDasharray="2 15"/>}</g>;})}
- {result.states.map(s=>{const Icon=typeIcons[s.type];return <g key={s.id} role="button" tabIndex={0} aria-label={`${s.id} ${s.name}, ${s.type}, ${s.status}`} onClick={()=>selectSite(s.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectSite(s.id);}}} transform={`translate(${s.x},${s.y})`} className="network-node" opacity={visible.some(v=>v.id===s.id)?1:.2}><circle r="25" fill={selected===s.id?'#d3eadf':'transparent'} stroke={selected===s.id?'#328a6b':'transparent'}/><rect x="-17" y="-17" width="34" height="34" rx={s.type==='CORE'?6:10} fill={s.type==='CORE'?'#254e62':'white'} stroke={s.status==='offline'?'#de8b83':'#c7d9d0'} strokeWidth="1.5"/><Icon x="-8.5" y="-8.5" width="17" height="17" color={s.type==='CORE'?'white':'#56756a'}/><circle r="4" cx="14" cy="-14" fill={s.status==='offline'?'#d77570':s.status==='degraded'?'#d6a543':'#49a280'} stroke="white" strokeWidth="1.5"/><text textAnchor="middle" y="33">{s.id}</text></g>;})}</svg></div>{view==="3d"&&<NetworkViewer portfolio={operatingPortfolio} selectedCable={localCableId} selectedAsset={selectedAsset} onCable={(siteId,id)=>{setSelected(siteId);setSelectedLink(null);setLocalCableId(id);setSelectedAsset("");}} onAsset={(siteId,id)=>{setSelected(siteId);setSelectedLink(null);setLocalCableId("");setSelectedAsset(id);}} selected={selected} selectedLink={selectedLink} route={route} broken={result.broken} layer={layer} onSite={selectSite} onLink={setSelectedLink}/>}<div className="network-map-caption"><span>ILLUSTRATIVE CAMPUS · NOT GEOGRAPHICALLY SURVEYED</span><span>Highlighted path: {selected}</span></div></div><div className="legend"><span><i className="line"/>Fiber ring / backhaul</span><span><i className="line blue"/>Microwave</span><span><i className="line gray"/>Ethernet over fiber</span><span><i className="status-dot red"/>Offline</span></div></section>
- <aside className="network-inspector">{localCable&&!transport&&<CableDetails cable={localCable}/>} {asset&&!transport&&<section className="network-detail"><div className="section-kicker">SELECTED PHYSICAL ASSET</div><h2>{asset.name}</h2><p>{site.id} / {asset.id}</p><dl><div><dt>Logical identity</dt><dd>{asset.logicalId}</dd></div><div><dt>Dimensions</dt><dd>{asset.size.join(" × ")} m</dd></div><div><dt>Position X/Y/Z</dt><dd>{asset.position.join(" / ")} m</dd></div><div><dt>Condition</dt><dd>{asset.condition}</dd></div></dl><Link className="network-action" href={`/sites?site=${site.id}&asset=${asset.id}`}>Open asset workspace</Link></section>}{transport&&<CableDetails cable={externalCable(transport,portfolio)}/>}{transport?<section className="network-detail"><div className="section-kicker">TRANSPORT LINK · {transport.id}</div><h2>{transport.a} ↔ {transport.b}</h2><p>{transport.kind} backhaul</p><dl><div><dt>Capacity</dt><dd>{transport.capacity} Mbps</dd></div><div><dt>A interface</dt><dd>{transport.aPort}</dd></div><div><dt>B interface</dt><dd>{transport.bPort}</dd></div><div><dt>Transport VLAN</dt><dd>{transport.vlan}</dd></div><div><dt>Offered load</dt><dd>{result.loads[ti].toFixed(0)} Mbps</dd></div><div><dt>Utilization</dt><dd>{(result.loads[ti]/transport.capacity*100).toFixed(1)}%</dd></div><div><dt>State</dt><dd>{result.broken[ti]?'Offline':'Available'}</dd></div></dl><button className="network-action" onClick={()=>setFailedLinks(failedLinks.includes(transport.id)?failedLinks.filter(id=>id!==transport.id):[...failedLinks,transport.id])}>{failedLinks.includes(transport.id)?'Restore transport link':'Simulate link failure'}</button><p className="network-note">{losExcluded.includes(transport.id)?`Excluded by modeled LoS: ${microwaveAssessment?.links.find(l=>l.id===transport.id)?.status}. Clearing a manual fault does not override this scenario.`:"Endpoint and scenario failures also affect this link."}</p></section>:<section className="network-detail"><div className="section-kicker">SELECTED SITE · {site.type}</div><div className="selected-site-name"><SiteIcon size={24}/><div><h2>{site.id}</h2><p>{site.name}</p></div></div><span className={`site-health ${site.status}`}>{site.status==='online'?'Connected':site.status==='degraded'?'Capacity constrained':'Disconnected'}</span><dl><div><dt>Site type</dt><dd>{typeLabel[site.type]}</dd></div><div><dt>Physical assets</dt><dd>{project.equipment.length}</dd></div><div><dt>Delivered demand</dt><dd>{site.delivered.toFixed(0)} Mbps</dd></div><div><dt>Path latency</dt><dd>{site.route?`${site.latency.toFixed(1)} ms`:'—'}</dd></div><div><dt>Serving core</dt><dd>{site.source||'No path'}</dd></div></dl><Link className="network-action" href={`/sites?site=${site.id}`}>Inspect 3D site <ArrowUpRight size={16}/></Link><button className="network-text-action" onClick={()=>setFailedSites(failedSites.includes(site.id)?failedSites.filter(id=>id!==site.id):[...failedSites,site.id])}>{failedSites.includes(site.id)?'Restore simulated site':'Simulate complete site outage'}</button>{inherited.includes(site.id)&&<p className="network-note">A saved or fresh reported equipment fault affects this site. Check its workspace and the observation panel.</p>}<div className="site-route"><h3>Active transport path</h3>{site.route?site.route.length?site.route.map(i=><button key={i} onClick={()=>setSelectedLink(networkLinks[i].id)}>{networkLinks[i].id} · {networkLinks[i].a} ↔ {networkLinks[i].b}<ChevronRight size={13}/></button>):<p>Private core / traffic source</p>:<p>No route to either private core.</p>}</div></section>}
- <section className="network-scenario"><h2><Zap size={16}/> Network scenario lab</h2><Select value={scenario} onValueChange={v=>{if(v)setScenario(v as NetworkScenario);}}><SelectTrigger aria-label="Select network failure scenario"><SelectValue>{networkScenarios.find(s=>s.id===scenario)?.name}</SelectValue></SelectTrigger><SelectContent>{networkScenarios.map(s=><SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select><p>{networkScenarios.find(s=>s.id===scenario)?.description}</p><div className="demand-label"><span id="network-demand">Traffic demand</span><strong>{demand}%</strong></div><Slider aria-labelledby="network-demand" min={25} max={250} step={5} value={[demand]} onValueChange={v=>setDemand(Array.isArray(v)?v[0]:v)}/><div className="range-labels"><span>25%</span><span>250%</span></div><div className="los-simulation"><label><input type="checkbox" checked={losApplied} disabled={!microwaveAssessment?.links.length} onChange={e=>setLosApplied(e.target.checked)}/>Apply modeled microwave LoS</label><p>{microwaveAssessment?`${microwaveAssessment.links.filter(l=>l.excluded).length} of ${microwaveAssessment.links.length} microwave paths excluded by this model at ${microwaveAssessment.frequencyGHz} GHz.`:'Loading terrain and building assessment…'}</p>{losApplied&&<output>Reachable sites: {baselineResult.online} → {result.online}. Delivered traffic: {(baselineResult.delivered/1000).toFixed(2)} → {(result.delivered/1000).toFixed(2)} Gbps.</output>}<details><summary>Scenario assumptions</summary><p>This optional scenario excludes blocked, insufficient-Fresnel and unverified paths using the Austin snapshot. All microwave paths use the frequency chosen in the LoS panel. It is not measured link status. Manual and equipment faults remain active.</p>{microwaveAssessment?.links.map(l=><button key={l.id} onClick={()=>setSelectedLink(l.id)}>{l.id} · {l.status}</button>)}</details></div><button className="network-reset" onClick={()=>{setScenario('normal');setDemand(100);setFailedSites([]);setFailedLinks([]);setLosApplied(false);setObservationsEnabled(false);}}><RotateCcw size={15}/> Reset network scenarios</button><p className="network-note">Reset keeps saved equipment conditions and turns off observation effects. Routing and capacity results are simulated.</p></section></aside></section>
- <ObservationsPanel enabled={observationsEnabled} onEnabled={setObservationsEnabled} onData={receiveObservations}/><GeoRF onEnvironment={setExportEnvironment} onAssessment={setMicrowaveAssessment} portfolio={operatingPortfolio} selected={selected} onSite={selectSite} onLink={setSelectedLink} broken={result.broken} offline={result.states.filter(s=>s.status==="offline").map(s=>s.id)}/><CablingPanel key={`${selected}/${selectedAsset}`} initialTarget={selectedAsset} selectedCable={localCableId} onCable={id=>{setLocalCableId(id);setSelectedLink(null);setSelectedAsset("");}} portfolio={operatingPortfolio} siteId={selected} route={site.route} source={site.source}/><section className="private-network-register"><div className="register-heading"><div><div className="section-kicker">NETWORK ASSET REGISTER</div><h2>Every site, one connected portfolio</h2></div><span>{Object.values(portfolio).reduce((n,p)=>n+p.equipment.length,0)} equipment objects across 30 sites</span></div><Table><TableHeader><TableRow><TableHead>Site / facility</TableHead><TableHead>Type</TableHead><TableHead>Zone</TableHead><TableHead>Assets</TableHead><TableHead>Serving core</TableHead><TableHead>Throughput</TableHead><TableHead>Health</TableHead><TableHead>Physical twin</TableHead></TableRow></TableHeader><TableBody>{visible.map(s=><TableRow key={s.id}><TableCell><button onClick={()=>selectSite(s.id)}>{s.id} · {s.name}</button></TableCell><TableCell>{s.type}</TableCell><TableCell>{s.zone}</TableCell><TableCell>{portfolio[s.id].equipment.length}</TableCell><TableCell>{s.source||'Disconnected'}</TableCell><TableCell>{s.delivered.toFixed(0)} Mbps</TableCell><TableCell><span className={`site-health ${s.status}`}>{s.status}</span></TableCell><TableCell><Link href={`/sites?site=${s.id}`}>Inspect <ArrowUpRight size={13}/></Link></TableCell></TableRow>)}</TableBody></Table></section>
- <footer><span><Network size={14}/> CITYMESH / PRIVATE NETWORK DIGITAL TWIN</span><span>30 synthetic sites · Dual private cores · Browser-local equipment state</span></footer></main></div>;
+import CablingPanel, { CableDetails } from '@/components/twin/cabling-panel';
+import { externalCable, buildSiteCabling } from '@/lib/cabling';
+const typeIcons = {
+  GBT: RadioTower,
+  RTT: Building2,
+  IBS: Building2,
+  SMALL_CELL: Wifi,
+  CORE: Server,
+};
+const typeLabel = {
+  GBT: 'Ground-based tower',
+  RTT: 'Rooftop tower',
+  IBS: 'In-building system',
+  SMALL_CELL: 'Small cell',
+  CORE: 'Private network core',
+};
+export default function Home() {
+  const [observationsEnabled, setObservationsEnabled] = useState(false),
+    [observations, setObservations] = useState<{
+      records: Observation[];
+      now: number;
+    }>({ records: [], now: 0 });
+  const receiveObservations = useCallback(
+    (records: Observation[], now: number) =>
+      setObservations((previous) =>
+        JSON.stringify(previous.records) === JSON.stringify(records)
+          ? previous
+          : { records, now },
+      ),
+    [],
+  );
+  const [exportEnvironment, setExportEnvironment] = useState<Environment>(),
+    [includeEnvironment, setIncludeEnvironment] = useState(false);
+  const [losApplied, setLosApplied] = useState(false),
+    [microwaveAssessment, setMicrowaveAssessment] =
+      useState<MicrowaveAssessment | null>(null);
+  const [bimBusy, setBimBusy] = useState(false);
+  const [localCableId, setLocalCableId] = useState(''),
+    [selectedAsset, setSelectedAsset] = useState('');
+  const [view, setView] = useState('3d');
+  const [portfolio, setPortfolio] = useState<Record<string, Project>>(() =>
+    createPortfolio(),
+  );
+  const [selected, setSelected] = useState('GBT-01');
+  const [selectedLink, setSelectedLink] = useState<string | null>(null);
+  const [scenario, setScenario] = useState<NetworkScenario>('normal');
+  const [demand, setDemand] = useState(100);
+  const [failedSites, setFailedSites] = useState<string[]>([]);
+  const [failedLinks, setFailedLinks] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [layer, setLayer] = useState('all');
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        setPortfolio(readPortfolio(localStorage.getItem(STORAGE_KEY)));
+      } catch {
+        setMessage(
+          'The saved portfolio could not be loaded. Sample sites are shown.',
+        );
+      }
+    };
+    refresh();
+    const id = new URLSearchParams(window.location.search).get('site');
+    if (id && siteById(id)) setSelected(id);
+    const link = new URLSearchParams(window.location.search).get('link');
+    if (networkLinks.some((l) => l.id === link)) setSelectedLink(link);
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+  const observed = useMemo(
+    () =>
+      observationScenario(
+        portfolio,
+        observations.records,
+        observationsEnabled,
+        observations.now,
+      ),
+    [portfolio, observations, observationsEnabled],
+  );
+  const operatingPortfolio = observed.portfolio;
+  const operatingLinks = useMemo(
+    () => [...failedLinks, ...observed.links],
+    [failedLinks, observed.links],
+  );
+  const inherited = useMemo(
+    () =>
+      Object.values(operatingPortfolio)
+        .filter((p) => siteCondition(p).offline)
+        .map((p) => p.siteId),
+    [operatingPortfolio],
+  );
+  const factors = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.values(operatingPortfolio).map((p) => [
+          p.siteId,
+          siteCondition(p).radioFactor,
+        ]),
+      ),
+    [operatingPortfolio],
+  );
+  const losExcluded = useMemo(
+    () => microwaveExclusions(microwaveAssessment, losApplied),
+    [microwaveAssessment, losApplied],
+  );
+  const baselineResult = useMemo(
+    () =>
+      simulateNetwork(
+        scenario,
+        demand,
+        [...failedSites, ...inherited],
+        operatingLinks,
+        factors,
+      ),
+    [scenario, demand, failedSites, operatingLinks, inherited, factors],
+  );
+  const result = useMemo(
+    () =>
+      losExcluded.length
+        ? simulateNetwork(
+            scenario,
+            demand,
+            [...failedSites, ...inherited],
+            [...operatingLinks, ...losExcluded],
+            factors,
+          )
+        : baselineResult,
+    [
+      scenario,
+      demand,
+      failedSites,
+      operatingLinks,
+      inherited,
+      factors,
+      losExcluded,
+      baselineResult,
+    ],
+  );
+  const site = result.states.find((s) => s.id === selected)!;
+  const project = portfolio[selected];
+  const SiteIcon = typeIcons[site.type];
+  const transport = networkLinks.find((l) => l.id === selectedLink);
+  const ti = transport ? networkLinks.indexOf(transport) : -1;
+  const visible = result.states.filter(
+    (s) =>
+      (filter === 'all' || s.type === filter) &&
+      `${s.id} ${s.name} ${s.zone}`.toLowerCase().includes(query.toLowerCase()),
+  );
+  const bad = result.states.filter((s) => s.status !== 'online');
+  const route = site.route || [];
+  const activeLinks = result.broken.filter((b) => !b).length;
+  const localCable = buildSiteCabling(project).cables.find(
+      (c) => c.id === localCableId,
+    ),
+    asset = project.equipment.find((e) => e.id === selectedAsset);
+  const selectSite = (id: string) => {
+    setSelected(id);
+    setSelectedLink(null);
+    setLocalCableId('');
+    setSelectedAsset('');
+  };
+  const exportPortfolio = () => {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(portfolio, null, 2)], {
+        type: 'application/json',
+      }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'citymesh-private-network-30-sites.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  return (
+    <div className="private-network">
+      <header className="topbar">
+        <Link className="brand" href="/">
+          <span className="brand-icon">
+            <Network size={23} />
+          </span>
+          citymesh
+          <span className="brand-divider" />
+          <span className="product-label">PRIVATE NETWORK TWIN</span>
+        </Link>
+        <div className="header-right">
+          <ThemeSwitch />
+          <FullscreenButton />
+          <a className="site-entry" href="#geo-rf">
+            Austin map & RF layers
+          </a>
+          <Link className="site-entry" href={`/sites?site=${selected}`}>
+            Open 3D site <ArrowUpRight size={16} />
+          </Link>
+          <span className="demo-badge">
+            <span /> Synthetic campus · 30 sites
+          </span>
+        </div>
+      </header>
+      <main>
+        <div className="heading">
+          <div>
+            <div className="eyebrow">
+              PRIVATE 5G / LTE <ChevronRight size={13} /> CAMPUS OPERATIONS
+            </div>
+            <h1>One network. Every site connected.</h1>
+            <p>
+              Explore the entire private network, then inspect the physical
+              details of any site.
+            </p>
+          </div>
+          <div className="portfolio-actions">
+            <label>
+              <input
+                type="checkbox"
+                checked={includeEnvironment}
+                disabled={!exportEnvironment || bimBusy}
+                onChange={(e) => setIncludeEnvironment(e.target.checked)}
+              />
+              Include terrain & buildings in BIM
+            </label>
+            <button
+              disabled={bimBusy}
+              onClick={async () => {
+                setBimBusy(true);
+                try {
+                  const { exportPortfolioIfc } =
+                    await import('@/lib/ifc-export');
+                  const text = await exportPortfolioIfc(
+                      portfolio,
+                      includeEnvironment ? exportEnvironment : undefined,
+                    ),
+                    url = URL.createObjectURL(
+                      new Blob([text], { type: 'application/x-step' }),
+                    ),
+                    a = document.createElement('a');
+                  a.href = url;
+                  a.download = includeEnvironment
+                    ? 'citymesh-austin-30-sites-with-environment.ifc'
+                    : 'citymesh-austin-30-sites.ifc';
+                  a.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  setMessage(
+                    includeEnvironment
+                      ? 'Coordinated IFC4 exported with sourced Austin terrain and buildings. Unknown heights remain footprint annotations.'
+                      : 'Coordinated IFC4 exported: all 30 sites, local cabling and 38 transport paths. Microwave paths are wireless annotations.',
+                  );
+                } catch (e) {
+                  setMessage(
+                    e instanceof Error
+                      ? e.message
+                      : 'Unable to export the coordinated BIM model.',
+                  );
+                } finally {
+                  setBimBusy(false);
+                }
+              }}
+            >
+              <Download size={16} />
+              {bimBusy ? 'Preparing BIM…' : 'Export 30-site BIM'}
+            </button>
+            <button onClick={exportPortfolio}>
+              <Download size={16} /> Export 30-site portfolio
+            </button>
+            <label>
+              <Upload size={16} /> Import portfolio
+              <input
+                type="file"
+                accept=".json"
+                aria-label="Import private network portfolio JSON"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  try {
+                    if (file.size > 10 * 1024 * 1024)
+                      throw new Error('Portfolio must be smaller than 10 MB.');
+                    const raw = await file.text(),
+                      data = JSON.parse(raw);
+                    if (
+                      !data ||
+                      typeof data !== 'object' ||
+                      Object.keys(data).length !== 30
+                    )
+                      throw new Error(
+                        'Import a complete 30-site portfolio export.',
+                      );
+                    const next = readPortfolio(raw);
+                    if (Object.keys(next).length !== 30)
+                      throw new Error('Invalid portfolio.');
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+                    setPortfolio(next);
+                    setMessage(
+                      'All 30 site projects imported. Physical conditions and network impacts updated.',
+                    );
+                  } catch (err) {
+                    setMessage(
+                      err instanceof Error
+                        ? err.message
+                        : 'Unable to import portfolio.',
+                    );
+                  }
+                }}
+              />
+            </label>
+          </div>
+        </div>
+        {observationsEnabled && (
+          <output className="network-notice">
+            Observation overlay active · {observations.records.length} fresh
+            reports. Routing and capacity remain simulated.
+          </output>
+        )}
+        {message && (
+          <output className="network-notice">
+            {message}
+            <button aria-label="Dismiss message" onClick={() => setMessage('')}>
+              ×
+            </button>
+          </output>
+        )}
+        <section className="metrics">
+          {[
+            {
+              title: 'Sites reachable',
+              value: `${result.online}`,
+              unit: '/ 30',
+              note: `${((result.online / 30) * 100).toFixed(1)}% network availability`,
+              icon: Network,
+            },
+            {
+              title: 'Transport links available',
+              value: String(activeLinks),
+              unit: `/ ${networkLinks.length}`,
+              note: 'Fiber · microwave · Ethernet',
+              icon: Cable,
+            },
+            {
+              title: 'Delivered throughput',
+              value: (result.delivered / 1000).toFixed(2),
+              unit: 'Gbps',
+              note: `${(result.requested / 1000).toFixed(2)} Gbps requested`,
+              icon: Activity,
+            },
+            {
+              title: 'Average path latency',
+              value: result.latency.toFixed(1),
+              unit: 'ms',
+              note: `${bad.length} sites need attention`,
+              icon: Zap,
+            },
+          ].map((m) => (
+            <article className="metric" key={m.title}>
+              <div className="metric-label">
+                {m.title}
+                <m.icon size={17} />
+              </div>
+              <div className="metric-value">
+                {m.value}
+                <span>{m.unit}</span>
+              </div>
+              <small>{m.note}</small>
+            </article>
+          ))}
+        </section>
+        <SharedPortfolioPanel
+          projects={portfolio}
+          onLoad={(next) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            setPortfolio(next);
+          }}
+        />
+        <section className="network-workspace">
+          <aside className="network-directory">
+            <div className="directory-title">
+              <h2>Site portfolio</h2>
+              <span>30</span>
+            </div>
+            <div className="network-search">
+              <Search size={15} />
+              <input
+                aria-label="Search network sites"
+                placeholder="Search sites…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <Select
+              value={filter}
+              onValueChange={(v) => {
+                if (v) setFilter(v);
+              }}
+            >
+              <SelectTrigger aria-label="Filter site type">
+                <SelectValue>
+                  {filter === 'all'
+                    ? 'All site types'
+                    : typeLabel[filter as SiteType]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All site types · 30</SelectItem>
+                {(
+                  ['GBT', 'RTT', 'IBS', 'SMALL_CELL', 'CORE'] as SiteType[]
+                ).map((type) => (
+                  <SelectItem value={type} key={type}>
+                    {typeLabel[type]} ·{' '}
+                    {siteDefinitions.filter((s) => s.type === type).length}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="directory-sites">
+              {visible.map((s) => {
+                const Icon = typeIcons[s.type];
+                return (
+                  <button
+                    key={s.id}
+                    className={selected === s.id ? 'selected' : ''}
+                    onClick={() => selectSite(s.id)}
+                  >
+                    <Icon size={17} />
+                    <span>
+                      <strong>{s.id}</strong>
+                      <small>{s.name}</small>
+                    </span>
+                    <i
+                      className={`status-dot ${s.status === 'offline' ? 'red' : s.status === 'degraded' ? 'amber' : ''}`}
+                    />
+                  </button>
+                );
+              })}
+              {!visible.length && <p>No matching sites.</p>}
+            </div>
+            <div className="directory-bottom">
+              {visible.length} of 30 sites shown
+              <br />
+              All sites have individual 3D models
+            </div>
+          </aside>
+          <section className="network-map-panel">
+            <div className="panel-head">
+              <div>
+                <h2>Private network connectivity</h2>
+                <span>
+                  Select a site or transport link to inspect its dependencies
+                </span>
+              </div>
+              <div className="network-view-toggle">
+                <button
+                  aria-pressed={view === '3d'}
+                  onClick={() => setView('3d')}
+                >
+                  3D network
+                </button>
+                <button
+                  aria-pressed={view === '2d'}
+                  onClick={() => setView('2d')}
+                >
+                  2D topology
+                </button>
+              </div>
+            </div>
+            <div className="network-map">
+              <details className="network-layers">
+                <summary>
+                  <Layers size={13} /> Links
+                </summary>
+                <div className="compact-link-options">
+                  {['all', 'fiber', 'microwave', 'ethernet'].map((l) => (
+                    <button
+                      key={l}
+                      aria-pressed={layer === l}
+                      className={layer === l ? 'active' : ''}
+                      onClick={() => setLayer(l)}
+                    >
+                      {l === 'all' ? 'All links' : l}
+                    </button>
+                  ))}
+                </div>
+              </details>
+              <div style={{ display: view === '2d' ? 'block' : 'none' }}>
+                <svg
+                  className="network-topology"
+                  viewBox="0 0 1000 700"
+                  aria-label="Thirty-site private network connectivity diagram"
+                >
+                  <defs>
+                    <pattern
+                      id="campus-grid"
+                      width="25"
+                      height="25"
+                      patternUnits="userSpaceOnUse"
+                    >
+                      <path
+                        d="M25 0H0V25"
+                        fill="none"
+                        stroke="#e1e8e6"
+                        strokeWidth=".7"
+                      />
+                    </pattern>
+                  </defs>
+                  <rect width="1000" height="700" fill="#f2f7f5" />
+                  <rect width="1000" height="700" fill="url(#campus-grid)" />
+                  <g className="campus-zones">
+                    <rect x="55" y="58" width="880" height="165" rx="18" />
+                    <rect x="55" y="245" width="880" height="190" rx="18" />
+                    <rect x="55" y="460" width="880" height="195" rx="18" />
+                  </g>
+                  <g className="districts">
+                    <text x="60" y="45">
+                      NORTH CAMPUS
+                    </text>
+                    <text x="60" y="237">
+                      CENTRAL / WEST CAMPUS
+                    </text>
+                    <text x="60" y="452">
+                      SOUTH CAMPUS
+                    </text>
+                  </g>
+                  {networkLinks.map((l, i) => {
+                    if (layer !== 'all' && l.kind !== layer) return null;
+                    const a = siteById(l.a)!,
+                      b = siteById(l.b)!;
+                    const isPath = route.includes(i);
+                    const color = result.broken[i]
+                      ? '#d97972'
+                      : result.loads[i] > l.capacity
+                        ? '#d3a04c'
+                        : l.kind === 'microwave'
+                          ? '#859ad0'
+                          : l.kind === 'ethernet'
+                            ? '#94a69d'
+                            : '#4aab8d';
+                    return (
+                      <g
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${l.id}: ${l.a} to ${l.b}, ${l.kind}, ${result.broken[i] ? 'offline' : 'available'}`}
+                        key={l.id}
+                        className="transport-edge"
+                        onClick={() => setSelectedLink(l.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedLink(l.id);
+                          }
+                        }}
+                      >
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke="transparent"
+                          strokeWidth="15"
+                        />
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke={selectedLink === l.id ? '#235a73' : color}
+                          strokeWidth={
+                            selectedLink === l.id ? 5 : isPath ? 3.8 : 1.7
+                          }
+                          strokeDasharray={
+                            result.broken[i]
+                              ? '5 6'
+                              : l.kind === 'microwave'
+                                ? '7 5'
+                                : undefined
+                          }
+                        />
+                        {isPath && !result.broken[i] && (
+                          <line
+                            x1={a.x}
+                            y1={a.y}
+                            x2={b.x}
+                            y2={b.y}
+                            stroke="white"
+                            strokeWidth="1.6"
+                            strokeDasharray="2 15"
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                  {result.states.map((s) => {
+                    const Icon = typeIcons[s.type];
+                    return (
+                      <g
+                        key={s.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${s.id} ${s.name}, ${s.type}, ${s.status}`}
+                        onClick={() => selectSite(s.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            selectSite(s.id);
+                          }
+                        }}
+                        transform={`translate(${s.x},${s.y})`}
+                        className="network-node"
+                        opacity={visible.some((v) => v.id === s.id) ? 1 : 0.2}
+                      >
+                        <circle
+                          r="25"
+                          fill={selected === s.id ? '#d3eadf' : 'transparent'}
+                          stroke={selected === s.id ? '#328a6b' : 'transparent'}
+                        />
+                        <rect
+                          x="-17"
+                          y="-17"
+                          width="34"
+                          height="34"
+                          rx={s.type === 'CORE' ? 6 : 10}
+                          fill={s.type === 'CORE' ? '#254e62' : 'white'}
+                          stroke={
+                            s.status === 'offline' ? '#de8b83' : '#c7d9d0'
+                          }
+                          strokeWidth="1.5"
+                        />
+                        <Icon
+                          x="-8.5"
+                          y="-8.5"
+                          width="17"
+                          height="17"
+                          color={s.type === 'CORE' ? 'white' : '#56756a'}
+                        />
+                        <circle
+                          r="4"
+                          cx="14"
+                          cy="-14"
+                          fill={
+                            s.status === 'offline'
+                              ? '#d77570'
+                              : s.status === 'degraded'
+                                ? '#d6a543'
+                                : '#49a280'
+                          }
+                          stroke="white"
+                          strokeWidth="1.5"
+                        />
+                        <text textAnchor="middle" y="33">
+                          {s.id}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              {view === '3d' && (
+                <NetworkViewer
+                  portfolio={operatingPortfolio}
+                  selectedCable={localCableId}
+                  selectedAsset={selectedAsset}
+                  onCable={(siteId, id) => {
+                    setSelected(siteId);
+                    setSelectedLink(null);
+                    setLocalCableId(id);
+                    setSelectedAsset('');
+                  }}
+                  onAsset={(siteId, id) => {
+                    setSelected(siteId);
+                    setSelectedLink(null);
+                    setLocalCableId('');
+                    setSelectedAsset(id);
+                  }}
+                  selected={selected}
+                  selectedLink={selectedLink}
+                  route={route}
+                  broken={result.broken}
+                  layer={layer}
+                  onSite={selectSite}
+                  onLink={setSelectedLink}
+                />
+              )}
+              <div className="network-map-caption">
+                <span>ILLUSTRATIVE CAMPUS · NOT GEOGRAPHICALLY SURVEYED</span>
+                <span>Highlighted path: {selected}</span>
+              </div>
+            </div>
+            <div className="legend">
+              <span>
+                <i className="line" />
+                Fiber ring / backhaul
+              </span>
+              <span>
+                <i className="line blue" />
+                Microwave
+              </span>
+              <span>
+                <i className="line gray" />
+                Ethernet over fiber
+              </span>
+              <span>
+                <i className="status-dot red" />
+                Offline
+              </span>
+            </div>
+          </section>
+          <aside className="network-inspector">
+            {localCable && !transport && (
+              <CableDetails cable={localCable} />
+            )}{' '}
+            {asset && !transport && (
+              <section className="network-detail">
+                <div className="section-kicker">SELECTED PHYSICAL ASSET</div>
+                <h2>{asset.name}</h2>
+                <p>
+                  {site.id} / {asset.id}
+                </p>
+                <dl>
+                  <div>
+                    <dt>Logical identity</dt>
+                    <dd>{asset.logicalId}</dd>
+                  </div>
+                  <div>
+                    <dt>Dimensions</dt>
+                    <dd>{asset.size.join(' × ')} m</dd>
+                  </div>
+                  <div>
+                    <dt>Position X/Y/Z</dt>
+                    <dd>{asset.position.join(' / ')} m</dd>
+                  </div>
+                  <div>
+                    <dt>Condition</dt>
+                    <dd>{asset.condition}</dd>
+                  </div>
+                </dl>
+                <Link
+                  className="network-action"
+                  href={`/sites?site=${site.id}&asset=${asset.id}`}
+                >
+                  Open asset workspace
+                </Link>
+              </section>
+            )}
+            {transport && (
+              <CableDetails cable={externalCable(transport, portfolio)} />
+            )}
+            {transport ? (
+              <section className="network-detail">
+                <div className="section-kicker">
+                  TRANSPORT LINK · {transport.id}
+                </div>
+                <h2>
+                  {transport.a} ↔ {transport.b}
+                </h2>
+                <p>{transport.kind} backhaul</p>
+                <dl>
+                  <div>
+                    <dt>Capacity</dt>
+                    <dd>{transport.capacity} Mbps</dd>
+                  </div>
+                  <div>
+                    <dt>A interface</dt>
+                    <dd>{transport.aPort}</dd>
+                  </div>
+                  <div>
+                    <dt>B interface</dt>
+                    <dd>{transport.bPort}</dd>
+                  </div>
+                  <div>
+                    <dt>Transport VLAN</dt>
+                    <dd>{transport.vlan}</dd>
+                  </div>
+                  <div>
+                    <dt>Offered load</dt>
+                    <dd>{result.loads[ti].toFixed(0)} Mbps</dd>
+                  </div>
+                  <div>
+                    <dt>Utilization</dt>
+                    <dd>
+                      {((result.loads[ti] / transport.capacity) * 100).toFixed(
+                        1,
+                      )}
+                      %
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>State</dt>
+                    <dd>{result.broken[ti] ? 'Offline' : 'Available'}</dd>
+                  </div>
+                </dl>
+                <button
+                  className="network-action"
+                  onClick={() =>
+                    setFailedLinks(
+                      failedLinks.includes(transport.id)
+                        ? failedLinks.filter((id) => id !== transport.id)
+                        : [...failedLinks, transport.id],
+                    )
+                  }
+                >
+                  {failedLinks.includes(transport.id)
+                    ? 'Restore transport link'
+                    : 'Simulate link failure'}
+                </button>
+                <p className="network-note">
+                  {losExcluded.includes(transport.id)
+                    ? `Excluded by modeled LoS: ${microwaveAssessment?.links.find((l) => l.id === transport.id)?.status}. Clearing a manual fault does not override this scenario.`
+                    : 'Endpoint and scenario failures also affect this link.'}
+                </p>
+              </section>
+            ) : (
+              <section className="network-detail">
+                <div className="section-kicker">
+                  SELECTED SITE · {site.type}
+                </div>
+                <div className="selected-site-name">
+                  <SiteIcon size={24} />
+                  <div>
+                    <h2>{site.id}</h2>
+                    <p>{site.name}</p>
+                  </div>
+                </div>
+                <span className={`site-health ${site.status}`}>
+                  {site.status === 'online'
+                    ? 'Connected'
+                    : site.status === 'degraded'
+                      ? 'Capacity constrained'
+                      : 'Disconnected'}
+                </span>
+                <dl>
+                  <div>
+                    <dt>Site type</dt>
+                    <dd>{typeLabel[site.type]}</dd>
+                  </div>
+                  <div>
+                    <dt>Physical assets</dt>
+                    <dd>{project.equipment.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Delivered demand</dt>
+                    <dd>{site.delivered.toFixed(0)} Mbps</dd>
+                  </div>
+                  <div>
+                    <dt>Path latency</dt>
+                    <dd>
+                      {site.route ? `${site.latency.toFixed(1)} ms` : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Serving core</dt>
+                    <dd>{site.source || 'No path'}</dd>
+                  </div>
+                </dl>
+                <Link
+                  className="network-action"
+                  href={`/sites?site=${site.id}`}
+                >
+                  Inspect 3D site <ArrowUpRight size={16} />
+                </Link>
+                <button
+                  className="network-text-action"
+                  onClick={() =>
+                    setFailedSites(
+                      failedSites.includes(site.id)
+                        ? failedSites.filter((id) => id !== site.id)
+                        : [...failedSites, site.id],
+                    )
+                  }
+                >
+                  {failedSites.includes(site.id)
+                    ? 'Restore simulated site'
+                    : 'Simulate complete site outage'}
+                </button>
+                {inherited.includes(site.id) && (
+                  <p className="network-note">
+                    A saved or fresh reported equipment fault affects this site.
+                    Check its workspace and the observation panel.
+                  </p>
+                )}
+                <div className="site-route">
+                  <h3>Active transport path</h3>
+                  {site.route ? (
+                    site.route.length ? (
+                      site.route.map((i) => (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedLink(networkLinks[i].id)}
+                        >
+                          {networkLinks[i].id} · {networkLinks[i].a} ↔{' '}
+                          {networkLinks[i].b}
+                          <ChevronRight size={13} />
+                        </button>
+                      ))
+                    ) : (
+                      <p>Private core / traffic source</p>
+                    )
+                  ) : (
+                    <p>No route to either private core.</p>
+                  )}
+                </div>
+              </section>
+            )}
+            <section className="network-scenario">
+              <h2>
+                <Zap size={16} /> Network scenario lab
+              </h2>
+              <Select
+                value={scenario}
+                onValueChange={(v) => {
+                  if (v) setScenario(v as NetworkScenario);
+                }}
+              >
+                <SelectTrigger aria-label="Select network failure scenario">
+                  <SelectValue>
+                    {networkScenarios.find((s) => s.id === scenario)?.name}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {networkScenarios.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p>
+                {networkScenarios.find((s) => s.id === scenario)?.description}
+              </p>
+              <div className="demand-label">
+                <span id="network-demand">Traffic demand</span>
+                <strong>{demand}%</strong>
+              </div>
+              <Slider
+                aria-labelledby="network-demand"
+                min={25}
+                max={250}
+                step={5}
+                value={[demand]}
+                onValueChange={(v) => setDemand(Array.isArray(v) ? v[0] : v)}
+              />
+              <div className="range-labels">
+                <span>25%</span>
+                <span>250%</span>
+              </div>
+              <div className="los-simulation">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={losApplied}
+                    disabled={!microwaveAssessment?.links.length}
+                    onChange={(e) => setLosApplied(e.target.checked)}
+                  />
+                  Apply modeled microwave LoS
+                </label>
+                <p>
+                  {microwaveAssessment
+                    ? `${microwaveAssessment.links.filter((l) => l.excluded).length} of ${microwaveAssessment.links.length} microwave paths excluded by this model at ${microwaveAssessment.frequencyGHz} GHz.`
+                    : 'Loading terrain and building assessment…'}
+                </p>
+                {losApplied && (
+                  <output>
+                    Reachable sites: {baselineResult.online} → {result.online}.
+                    Delivered traffic:{' '}
+                    {(baselineResult.delivered / 1000).toFixed(2)} →{' '}
+                    {(result.delivered / 1000).toFixed(2)} Gbps.
+                  </output>
+                )}
+                <details>
+                  <summary>Scenario assumptions</summary>
+                  <p>
+                    This optional scenario excludes blocked,
+                    insufficient-Fresnel and unverified paths using the Austin
+                    snapshot. All microwave paths use the frequency chosen in
+                    the LoS panel. It is not measured link status. Manual and
+                    equipment faults remain active.
+                  </p>
+                  {microwaveAssessment?.links.map((l) => (
+                    <button key={l.id} onClick={() => setSelectedLink(l.id)}>
+                      {l.id} · {l.status}
+                    </button>
+                  ))}
+                </details>
+              </div>
+              <button
+                className="network-reset"
+                onClick={() => {
+                  setScenario('normal');
+                  setDemand(100);
+                  setFailedSites([]);
+                  setFailedLinks([]);
+                  setLosApplied(false);
+                  setObservationsEnabled(false);
+                }}
+              >
+                <RotateCcw size={15} /> Reset network scenarios
+              </button>
+              <p className="network-note">
+                Reset keeps saved equipment conditions and turns off observation
+                effects. Routing and capacity results are simulated.
+              </p>
+            </section>
+          </aside>
+        </section>
+        <ObservationsPanel
+          enabled={observationsEnabled}
+          onEnabled={setObservationsEnabled}
+          onData={receiveObservations}
+        />
+        <GeoRF
+          onEnvironment={setExportEnvironment}
+          onAssessment={setMicrowaveAssessment}
+          portfolio={operatingPortfolio}
+          selected={selected}
+          onSite={selectSite}
+          onLink={setSelectedLink}
+          broken={result.broken}
+          offline={result.states
+            .filter((s) => s.status === 'offline')
+            .map((s) => s.id)}
+        />
+        <CablingPanel
+          key={`${selected}/${selectedAsset}`}
+          initialTarget={selectedAsset}
+          selectedCable={localCableId}
+          onCable={(id) => {
+            setLocalCableId(id);
+            setSelectedLink(null);
+            setSelectedAsset('');
+          }}
+          portfolio={operatingPortfolio}
+          siteId={selected}
+          route={site.route}
+          source={site.source}
+        />
+        <section className="private-network-register">
+          <div className="register-heading">
+            <div>
+              <div className="section-kicker">NETWORK ASSET REGISTER</div>
+              <h2>Every site, one connected portfolio</h2>
+            </div>
+            <span>
+              {Object.values(portfolio).reduce(
+                (n, p) => n + p.equipment.length,
+                0,
+              )}{' '}
+              equipment objects across 30 sites
+            </span>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Site / facility</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Zone</TableHead>
+                <TableHead>Assets</TableHead>
+                <TableHead>Serving core</TableHead>
+                <TableHead>Throughput</TableHead>
+                <TableHead>Health</TableHead>
+                <TableHead>Physical twin</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell>
+                    <button onClick={() => selectSite(s.id)}>
+                      {s.id} · {s.name}
+                    </button>
+                  </TableCell>
+                  <TableCell>{s.type}</TableCell>
+                  <TableCell>{s.zone}</TableCell>
+                  <TableCell>{portfolio[s.id].equipment.length}</TableCell>
+                  <TableCell>{s.source || 'Disconnected'}</TableCell>
+                  <TableCell>{s.delivered.toFixed(0)} Mbps</TableCell>
+                  <TableCell>
+                    <span className={`site-health ${s.status}`}>
+                      {s.status}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/sites?site=${s.id}`}>
+                      Inspect <ArrowUpRight size={13} />
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </section>
+        <footer>
+          <span>
+            <Network size={14} /> CITYMESH / PRIVATE NETWORK DIGITAL TWIN
+          </span>
+          <span>
+            30 synthetic sites · Dual private cores · Browser-local equipment
+            state
+          </span>
+        </footer>
+      </main>
+    </div>
+  );
 }
-
-
-
-
-
-
-
-

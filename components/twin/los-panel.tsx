@@ -1,3 +1,159 @@
-import type {Environment,LOSProfile} from '@/lib/environment-model';
-import {networkLinks} from '@/lib/private-network';
-export default function LosPanel({environment,profile,link,onLink,frequency,onFrequency}:{environment:Environment;profile:LOSProfile|null;link:string;onLink:(id:string)=>void;frequency:number;onFrequency:(n:number)=>void}){const min=profile?Math.min(...profile.samples.map(s=>s.ground))-5:0,max=profile?Math.max(...profile.samples.map(s=>Math.max(s.obstacle,s.ray)))+10:1,x=(d:number)=>40+d/(profile?.distance||1)*640,y=(h:number)=>180-(h-min)/(max-min)*150,path=(key:'ground'|'obstacle'|'ray')=>profile?.samples.map((s,i)=>`${i?'L':'M'}${x(s.distance).toFixed(1)},${y(s[key]).toFixed(1)}`).join(' ');return <section className="los-panel"><h3>Microwave LoS & path elevation</h3><div className="geo-tools"><label>Path <select value={link} onChange={e=>onLink(e.target.value)}>{networkLinks.filter(l=>l.kind==='microwave').map(l=><option key={l.id} value={l.id}>{l.id} · {l.a} ↔ {l.b}</option>)}</select></label><label>Frequency (GHz) <input type="number" min="1" max="80" step="1" value={frequency} onChange={e=>onFrequency(Math.max(1,Math.min(80,Number(e.target.value)||18)))}/></label></div>{profile?<><p><b>{profile.status}</b> · {profile.distance.toFixed(0)} m path · minimum direct clearance {profile.clearance.toFixed(1)} m · 60% Fresnel clearance {profile.fresnelClearance.toFixed(1)} m</p><svg viewBox="0 0 720 210" aria-label="Terrain, building and line-of-sight elevation profile"><path d={path('ground')} stroke="#698267" fill="none" strokeWidth="2"/><path d={path('obstacle')} stroke="#9c8b79" fill="none" strokeWidth="2"/><path d={path('ray')} stroke={profile.clearance<0?'#d84646':'#168878'} fill="none" strokeWidth="2"/><path d={profile.samples.map((s,i)=>`${i?'L':'M'}${x(s.distance)},${y(s.ray-.6*s.fresnel)}`).join(' ')} stroke="#d59a29" fill="none" strokeDasharray="4 3"/><text x="5" y="20" fontSize="11">{max.toFixed(0)} m</text><text x="5" y="183" fontSize="11">{min.toFixed(0)} m</text><text x="40" y="203" fontSize="11">{profile.a.y.toFixed(1)} m endpoint · 0 m</text><text x="500" y="203" fontSize="11">{profile.b.y.toFixed(1)} m endpoint · {profile.distance.toFixed(0)} m</text></svg><p>Green terrain · brown building tops · red/teal direct ray · gold 60% Fresnel boundary. The same selected ray and clearance boundary appear in 3D.</p></>:<p>Path unavailable: check its modeled endpoints and terrain extent.</p>}<details><summary>Elevation and building data</summary><p><a href={environment.terrain.source} target="_blank" rel="noreferrer">USGS 3DEP</a>: {environment.terrain.step} m sampled grid; native elevation values in metres. <a href={environment.buildingSource} target="_blank" rel="noreferrer">City of Austin {environment.buildingYear} footprints</a>: {environment.buildings.length.toLocaleString()} buildings; {environment.buildings.filter(b=>b.height===null).length} unknown heights shown as low gold outlines. Retrieved {environment.terrain.retrievedAt.slice(0,10)}.</p><p>Building roofs use source maximum heights converted from US survey feet and the source base elevation when available (sampled terrain otherwise); detailed roof form is unavailable. LoS uses exact footprint crossings, interpolated ground, a 4/3-earth curvature approximation and an adjustable microwave frequency. Trees, later construction, diffraction and actual radio feasibility are not modeled. “Model clear” is preliminary; unknown intersecting heights prevent a clear result. The 30 network sites remain hypothetical, so some may intersect real buildings.</p></details></section>;}
+import type { Environment, LOSProfile } from '@/lib/environment-model';
+import { networkLinks } from '@/lib/private-network';
+export default function LosPanel({
+  environment,
+  profile,
+  link,
+  onLink,
+  frequency,
+  onFrequency,
+}: {
+  environment: Environment;
+  profile: LOSProfile | null;
+  link: string;
+  onLink: (id: string) => void;
+  frequency: number;
+  onFrequency: (n: number) => void;
+}) {
+  const min = profile
+      ? Math.min(...profile.samples.map((s) => s.ground)) - 5
+      : 0,
+    max = profile
+      ? Math.max(...profile.samples.map((s) => Math.max(s.obstacle, s.ray))) +
+        10
+      : 1,
+    x = (d: number) => 40 + (d / (profile?.distance || 1)) * 640,
+    y = (h: number) => 180 - ((h - min) / (max - min)) * 150,
+    path = (key: 'ground' | 'obstacle' | 'ray') =>
+      profile?.samples
+        .map(
+          (s, i) =>
+            `${i ? 'L' : 'M'}${x(s.distance).toFixed(1)},${y(s[key]).toFixed(1)}`,
+        )
+        .join(' ');
+  return (
+    <section className="los-panel">
+      <h3>Microwave LoS & path elevation</h3>
+      <div className="geo-tools">
+        <label>
+          Path{' '}
+          <select value={link} onChange={(e) => onLink(e.target.value)}>
+            {networkLinks
+              .filter((l) => l.kind === 'microwave')
+              .map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.id} · {l.a} ↔ {l.b}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Frequency (GHz){' '}
+          <input
+            type="number"
+            min="1"
+            max="80"
+            step="1"
+            value={frequency}
+            onChange={(e) =>
+              onFrequency(
+                Math.max(1, Math.min(80, Number(e.target.value) || 18)),
+              )
+            }
+          />
+        </label>
+      </div>
+      {profile ? (
+        <>
+          <p>
+            <b>{profile.status}</b> · {profile.distance.toFixed(0)} m path ·
+            minimum direct clearance {profile.clearance.toFixed(1)} m · 60%
+            Fresnel clearance {profile.fresnelClearance.toFixed(1)} m
+          </p>
+          <svg
+            viewBox="0 0 720 210"
+            aria-label="Terrain, building and line-of-sight elevation profile"
+          >
+            <path
+              d={path('ground')}
+              stroke="#698267"
+              fill="none"
+              strokeWidth="2"
+            />
+            <path
+              d={path('obstacle')}
+              stroke="#9c8b79"
+              fill="none"
+              strokeWidth="2"
+            />
+            <path
+              d={path('ray')}
+              stroke={profile.clearance < 0 ? '#d84646' : '#168878'}
+              fill="none"
+              strokeWidth="2"
+            />
+            <path
+              d={profile.samples
+                .map(
+                  (s, i) =>
+                    `${i ? 'L' : 'M'}${x(s.distance)},${y(s.ray - 0.6 * s.fresnel)}`,
+                )
+                .join(' ')}
+              stroke="#d59a29"
+              fill="none"
+              strokeDasharray="4 3"
+            />
+            <text x="5" y="20" fontSize="11">
+              {max.toFixed(0)} m
+            </text>
+            <text x="5" y="183" fontSize="11">
+              {min.toFixed(0)} m
+            </text>
+            <text x="40" y="203" fontSize="11">
+              {profile.a.y.toFixed(1)} m endpoint · 0 m
+            </text>
+            <text x="500" y="203" fontSize="11">
+              {profile.b.y.toFixed(1)} m endpoint ·{' '}
+              {profile.distance.toFixed(0)} m
+            </text>
+          </svg>
+          <p>
+            Green terrain · brown building tops · red/teal direct ray · gold 60%
+            Fresnel boundary. The same selected ray and clearance boundary
+            appear in 3D.
+          </p>
+        </>
+      ) : (
+        <p>Path unavailable: check its modeled endpoints and terrain extent.</p>
+      )}
+      <details>
+        <summary>Elevation and building data</summary>
+        <p>
+          <a href={environment.terrain.source} target="_blank" rel="noreferrer">
+            USGS 3DEP
+          </a>
+          : {environment.terrain.step} m sampled grid; native elevation values
+          in metres.{' '}
+          <a href={environment.buildingSource} target="_blank" rel="noreferrer">
+            City of Austin {environment.buildingYear} footprints
+          </a>
+          : {environment.buildings.length.toLocaleString()} buildings;{' '}
+          {environment.buildings.filter((b) => b.height === null).length}{' '}
+          unknown heights shown as low gold outlines. Retrieved{' '}
+          {environment.terrain.retrievedAt.slice(0, 10)}.
+        </p>
+        <p>
+          Building roofs use source maximum heights converted from US survey
+          feet and the source base elevation when available (sampled terrain
+          otherwise); detailed roof form is unavailable. LoS uses exact
+          footprint crossings, interpolated ground, a 4/3-earth curvature
+          approximation and an adjustable microwave frequency. Trees, later
+          construction, diffraction and actual radio feasibility are not
+          modeled. “Model clear” is preliminary; unknown intersecting heights
+          prevent a clear result. The 30 network sites remain hypothetical, so
+          some may intersect real buildings.
+        </p>
+      </details>
+    </section>
+  );
+}

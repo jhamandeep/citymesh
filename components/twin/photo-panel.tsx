@@ -1,21 +1,336 @@
 'use client';
 /* Blob URLs are allocated and revoked with the photo lifecycle; originals never go to an image server. */
 /* oxlint-disable react/react-compiler, next/no-img-element */
-import {useEffect,useState} from 'react';
-import {listPhotos,makePhoto,savePhoto,removePhoto,PHOTO_LIMIT,type PhotoRecord} from '@/lib/photo-store';
-import type {Equipment} from '@/lib/site-model';
+import { useEffect, useState } from 'react';
+import {
+  listPhotos,
+  makePhoto,
+  savePhoto,
+  removePhoto,
+  PHOTO_LIMIT,
+  type PhotoRecord,
+} from '@/lib/photo-store';
+import type { Equipment } from '@/lib/site-model';
 import './photos.css';
 import SharedPhotos from './shared-photos';
 
-function download(blob:Blob,name:string){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function Photo({record,onLocate,onRemove,busy}:{record:PhotoRecord;onLocate?:()=>void;onRemove:()=>Promise<void>;busy:boolean}){
- const [url,setUrl]=useState(''),[confirm,setConfirm]=useState(false);
- useEffect(()=>{const next=URL.createObjectURL(new Blob([record.bytes],{type:record.mime}));setUrl(next);return()=>URL.revokeObjectURL(next);},[record]);
- return <article className="inspection-photo">{url&&<a href={url} target="_blank" rel="noreferrer" aria-label={`Open photo ${record.filename}`}><img src={url} alt={`${record.assetId}: ${record.note||record.filename}`} loading="lazy"/></a>}<strong>{record.filename}</strong><span>{record.assetId} · revision {record.revision}</span><span>{record.capturedAt||'Capture date unspecified'} · {record.source||'Source unspecified'}</span>{record.note&&<p>{record.note}</p>}<div className="photo-actions">{onLocate?<button onClick={onLocate}>Locate component</button>:<span>Component no longer in this design</span>}<button onClick={()=>download(new Blob([record.bytes],{type:record.mime}),record.filename)}>Download original</button><button disabled={busy} onClick={()=>setConfirm(!confirm)}>Remove photo</button></div>{confirm&&<div className="photo-confirm"><p>Remove this photo from browser storage? Download a copy first if needed.</p><button disabled={busy} onClick={onRemove}>Confirm photo removal</button><button onClick={()=>setConfirm(false)}>Cancel</button></div>}<details><summary>File provenance</summary><p>Added {new Date(record.addedAt).toLocaleString()}</p><small>SHA-256: {record.sha256}</small><button onClick={()=>{const {bytes,...metadata}=record;download(new Blob([JSON.stringify({...metadata,byteLength:bytes.byteLength},null,2)],{type:'application/json'}),`${record.id}-provenance.json`);}}>Download provenance</button></details></article>;
+function download(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export default function PhotoPanel({siteId,revision,equipment,selected,onSelect}:{siteId:string;revision:number;equipment:Equipment[];selected:string;onSelect:(id:string)=>void}){
- const [records,setRecords]=useState<PhotoRecord[]>([]),[busy,setBusy]=useState(true),[message,setMessage]=useState(''),[filter,setFilter]=useState('all');
- useEffect(()=>{let active=true;listPhotos(siteId).then(r=>{if(active)setRecords(r);}).catch(e=>{if(active)setMessage(e instanceof Error?e.message:'Unable to load photos.');}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;};},[siteId]);
- const asset=equipment.find(e=>e.id===selected),shown=records.filter(r=>filter==='all'||r.assetId===selected);
- return <section className="photo-panel"><header><div><small>INSPECTION EVIDENCE / {siteId}</small><h3>Component photos</h3></div><span>{records.length} / 20 saved</span></header><p>Attach a field photo to the selected equipment. Photos retain their original files and the revision at capture entry.</p><details><summary>Add photo{asset?` · ${asset.name}`:''}</summary>{asset?<form onSubmit={e=>e.preventDefault()}><fieldset disabled={busy}><p>Linked to <b>{asset.id}</b> · revision {revision}</p><div className="photo-fields"><label>Photo source<input name="source" maxLength={240} placeholder="Inspector or survey company"/></label><label>Photo capture date<input name="capturedAt" type="date"/></label></div><label>Inspection note<textarea name="note" maxLength={2000} placeholder="Condition, installation detail or issue observed"/></label><label>Choose photo · JPEG, PNG or WebP · up to 5 MB<input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Attach component photo" onChange={async e=>{const file=e.target.files?.[0],form=e.target.form;e.target.value='';if(!file||!form)return;const fields=new FormData(form),text=(key:string)=>{const value=fields.get(key);return typeof value==='string'?value.trim():'';};setBusy(true);setMessage('Checking photo…');try{if(file.size>PHOTO_LIMIT)throw new Error('Choose a photo up to 5 MB.');const next=await makePhoto({siteId,assetId:asset.id,revision,filename:file.name,bytes:await file.arrayBuffer(),source:text('source'),capturedAt:text('capturedAt'),note:text('note')});const decoded=await createImageBitmap(new Blob([next.bytes],{type:next.mime}));const valid=decoded.width>0&&decoded.height>0&&decoded.width*decoded.height<=40000000;decoded.close();if(!valid)throw new Error('Choose a photo with up to 40 megapixels.');await savePhoto(next);setRecords(r=>[next,...r]);setMessage(`Photo saved for ${next.assetId}.`);}catch(e){setMessage(e instanceof Error?e.message:'Unable to save photo.');}finally{setBusy(false);}}}/></label></fieldset></form>:<p>Select an equipment component in the model or inventory first.</p>}</details><div className="photo-actions"><button aria-pressed={filter==='all'} onClick={()=>setFilter('all')}>All site photos</button><button disabled={!asset} aria-pressed={filter==='selected'} onClick={()=>setFilter('selected')}>Selected component</button></div>{busy&&<p>Processing photo storage…</p>}{message&&<output aria-live="polite">{message}</output>}<div className="photo-grid">{shown.map(r=><Photo key={r.id} record={r} busy={busy} onLocate={equipment.some(e=>e.id===r.assetId)?()=>onSelect(r.assetId):undefined} onRemove={async()=>{setBusy(true);try{await removePhoto(siteId,r.id);setRecords(items=>items.filter(item=>item.id!==r.id));setMessage('Photo removed from this browser.');}catch(e){setMessage(e instanceof Error?e.message:'Unable to remove photo.');}finally{setBusy(false);}}}/>)}</div>{!busy&&!shown.length&&<p>No photos saved for {filter==='all'?'this site':'this component'}.</p>}<small>Local copies stay in this browser. Share photos below for access from another device. Download originals before clearing browser data.</small><SharedPhotos siteId={siteId} local={records} equipment={equipment} onSelect={onSelect}/></section>;
+function Photo({
+  record,
+  onLocate,
+  onRemove,
+  busy,
+}: {
+  record: PhotoRecord;
+  onLocate?: () => void;
+  onRemove: () => Promise<void>;
+  busy: boolean;
+}) {
+  const [url, setUrl] = useState(''),
+    [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    const next = URL.createObjectURL(
+      new Blob([record.bytes], { type: record.mime }),
+    );
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [record]);
+  return (
+    <article className="inspection-photo">
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open photo ${record.filename}`}
+        >
+          <img
+            src={url}
+            alt={`${record.assetId}: ${record.note || record.filename}`}
+            loading="lazy"
+          />
+        </a>
+      )}
+      <strong>{record.filename}</strong>
+      <span>
+        {record.assetId} · revision {record.revision}
+      </span>
+      <span>
+        {record.capturedAt || 'Capture date unspecified'} ·{' '}
+        {record.source || 'Source unspecified'}
+      </span>
+      {record.note && <p>{record.note}</p>}
+      <div className="photo-actions">
+        {onLocate ? (
+          <button onClick={onLocate}>Locate component</button>
+        ) : (
+          <span>Component no longer in this design</span>
+        )}
+        <button
+          onClick={() =>
+            download(
+              new Blob([record.bytes], { type: record.mime }),
+              record.filename,
+            )
+          }
+        >
+          Download original
+        </button>
+        <button disabled={busy} onClick={() => setConfirm(!confirm)}>
+          Remove photo
+        </button>
+      </div>
+      {confirm && (
+        <div className="photo-confirm">
+          <p>
+            Remove this photo from browser storage? Download a copy first if
+            needed.
+          </p>
+          <button disabled={busy} onClick={onRemove}>
+            Confirm photo removal
+          </button>
+          <button onClick={() => setConfirm(false)}>Cancel</button>
+        </div>
+      )}
+      <details>
+        <summary>File provenance</summary>
+        <p>Added {new Date(record.addedAt).toLocaleString()}</p>
+        <small>SHA-256: {record.sha256}</small>
+        <button
+          onClick={() => {
+            const { bytes, ...metadata } = record;
+            download(
+              new Blob(
+                [
+                  JSON.stringify(
+                    { ...metadata, byteLength: bytes.byteLength },
+                    null,
+                    2,
+                  ),
+                ],
+                { type: 'application/json' },
+              ),
+              `${record.id}-provenance.json`,
+            );
+          }}
+        >
+          Download provenance
+        </button>
+      </details>
+    </article>
+  );
+}
+export default function PhotoPanel({
+  siteId,
+  revision,
+  equipment,
+  selected,
+  onSelect,
+}: {
+  siteId: string;
+  revision: number;
+  equipment: Equipment[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const [records, setRecords] = useState<PhotoRecord[]>([]),
+    [busy, setBusy] = useState(true),
+    [message, setMessage] = useState(''),
+    [filter, setFilter] = useState('all');
+  useEffect(() => {
+    let active = true;
+    listPhotos(siteId)
+      .then((r) => {
+        if (active) setRecords(r);
+      })
+      .catch((e) => {
+        if (active)
+          setMessage(e instanceof Error ? e.message : 'Unable to load photos.');
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+  const asset = equipment.find((e) => e.id === selected),
+    shown = records.filter((r) => filter === 'all' || r.assetId === selected);
+  return (
+    <section className="photo-panel">
+      <header>
+        <div>
+          <small>INSPECTION EVIDENCE / {siteId}</small>
+          <h3>Component photos</h3>
+        </div>
+        <span>{records.length} / 20 saved</span>
+      </header>
+      <p>
+        Attach a field photo to the selected equipment. Photos retain their
+        original files and the revision at capture entry.
+      </p>
+      <details>
+        <summary>Add photo{asset ? ` · ${asset.name}` : ''}</summary>
+        {asset ? (
+          <form onSubmit={(e) => e.preventDefault()}>
+            <fieldset disabled={busy}>
+              <p>
+                Linked to <b>{asset.id}</b> · revision {revision}
+              </p>
+              <div className="photo-fields">
+                <label>
+                  Photo source
+                  <input
+                    name="source"
+                    maxLength={240}
+                    placeholder="Inspector or survey company"
+                  />
+                </label>
+                <label>
+                  Photo capture date
+                  <input name="capturedAt" type="date" />
+                </label>
+              </div>
+              <label>
+                Inspection note
+                <textarea
+                  name="note"
+                  maxLength={2000}
+                  placeholder="Condition, installation detail or issue observed"
+                />
+              </label>
+              <label>
+                Choose photo · JPEG, PNG or WebP · up to 5 MB
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Attach component photo"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0],
+                      form = e.target.form;
+                    e.target.value = '';
+                    if (!file || !form) return;
+                    const fields = new FormData(form),
+                      text = (key: string) => {
+                        const value = fields.get(key);
+                        return typeof value === 'string' ? value.trim() : '';
+                      };
+                    setBusy(true);
+                    setMessage('Checking photo…');
+                    try {
+                      if (file.size > PHOTO_LIMIT)
+                        throw new Error('Choose a photo up to 5 MB.');
+                      const next = await makePhoto({
+                        siteId,
+                        assetId: asset.id,
+                        revision,
+                        filename: file.name,
+                        bytes: await file.arrayBuffer(),
+                        source: text('source'),
+                        capturedAt: text('capturedAt'),
+                        note: text('note'),
+                      });
+                      const decoded = await createImageBitmap(
+                        new Blob([next.bytes], { type: next.mime }),
+                      );
+                      const valid =
+                        decoded.width > 0 &&
+                        decoded.height > 0 &&
+                        decoded.width * decoded.height <= 40000000;
+                      decoded.close();
+                      if (!valid)
+                        throw new Error(
+                          'Choose a photo with up to 40 megapixels.',
+                        );
+                      await savePhoto(next);
+                      setRecords((r) => [next, ...r]);
+                      setMessage(`Photo saved for ${next.assetId}.`);
+                    } catch (e) {
+                      setMessage(
+                        e instanceof Error
+                          ? e.message
+                          : 'Unable to save photo.',
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                />
+              </label>
+            </fieldset>
+          </form>
+        ) : (
+          <p>Select an equipment component in the model or inventory first.</p>
+        )}
+      </details>
+      <div className="photo-actions">
+        <button
+          aria-pressed={filter === 'all'}
+          onClick={() => setFilter('all')}
+        >
+          All site photos
+        </button>
+        <button
+          disabled={!asset}
+          aria-pressed={filter === 'selected'}
+          onClick={() => setFilter('selected')}
+        >
+          Selected component
+        </button>
+      </div>
+      {busy && <p>Processing photo storage…</p>}
+      {message && <output aria-live="polite">{message}</output>}
+      <div className="photo-grid">
+        {shown.map((r) => (
+          <Photo
+            key={r.id}
+            record={r}
+            busy={busy}
+            onLocate={
+              equipment.some((e) => e.id === r.assetId)
+                ? () => onSelect(r.assetId)
+                : undefined
+            }
+            onRemove={async () => {
+              setBusy(true);
+              try {
+                await removePhoto(siteId, r.id);
+                setRecords((items) => items.filter((item) => item.id !== r.id));
+                setMessage('Photo removed from this browser.');
+              } catch (e) {
+                setMessage(
+                  e instanceof Error ? e.message : 'Unable to remove photo.',
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        ))}
+      </div>
+      {!busy && !shown.length && (
+        <p>
+          No photos saved for{' '}
+          {filter === 'all' ? 'this site' : 'this component'}.
+        </p>
+      )}
+      <small>
+        Local copies stay in this browser. Share photos below for access from
+        another device. Download originals before clearing browser data.
+      </small>
+      <SharedPhotos
+        siteId={siteId}
+        local={records}
+        equipment={equipment}
+        onSelect={onSelect}
+      />
+    </section>
+  );
 }

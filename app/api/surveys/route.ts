@@ -1,12 +1,144 @@
-import {env} from 'cloudflare:workers';
-import type {D1Database,R2Bucket} from '@cloudflare/workers-types';
-import {siteById} from '@/lib/private-network';
-import {SurveyError,surveyRow,surveySnapshot,publishSurvey,removeSharedSurvey} from '@/lib/shared-surveys';
-import type {SurveyRecord} from '@/lib/survey-store';
-const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
-const failure=(e:unknown)=>json({error:e instanceof SurveyError?e.message:'Shared survey storage is unavailable. Local models remain unchanged.'},e instanceof SurveyError?e.status:503);
-function context(request:Request){const {DB,EVIDENCE}=env as unknown as {DB?:D1Database;EVIDENCE?:R2Bucket};if(!DB||!EVIDENCE)throw new SurveyError('Shared survey storage is not configured.',503);const params=new URL(request.url).searchParams,site=params.get('site')||'';if(!siteById(site))throw new SurveyError('Choose a known site.');return {db:DB,bucket:EVIDENCE,params,site};}
-function version(raw:string|null){if(raw===null||!/^\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new SurveyError('Invalid shared survey version.');return Number(raw);}
-export async function GET(request:Request){try{const {db,bucket,params,site}=context(request),row=await surveyRow(db,site);if(params.get('file')!=='1')return json(surveySnapshot(row));if(!row?.object_key||!row.metadata)return json({error:'Shared survey not found.'},404);if(row.version!==version(params.get('version')))throw new SurveyError('Shared survey changed. Refresh before opening it.',409);const object=await bucket.get(row.object_key);if(!object)throw new SurveyError('Survey original is unavailable.',503);const metadata=JSON.parse(row.metadata);return new Response(object.body as unknown as ReadableStream,{headers:{'Content-Type':'model/gltf-binary','Content-Length':String(object.size),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(metadata.filename)}`}});}catch(e){return failure(e);}}
-export async function PUT(request:Request){if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'Use the survey controls on this Site.'},403);if(request.headers.get('content-type')!=='model/gltf-binary')return json({error:'Send a binary GLB survey.'},415);try{const {db,bucket,params,site}=context(request),expected=version(params.get('version'));let details:Omit<SurveyRecord,'bytes'>;try{const raw=request.headers.get('x-citymesh-survey')||'';if(raw.length>24000)throw new Error();details=JSON.parse(decodeURIComponent(raw));}catch{throw new SurveyError('Invalid survey metadata.');}const reader=request.body?.getReader();if(!reader)throw new SurveyError('Missing survey file.');let length=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;length+=value.byteLength;if(length>20*1024*1024){await reader.cancel();throw new SurveyError('Survey exceeds 20 MB.',413);}chunks.push(value);}const data=new Uint8Array(length);let offset=0;for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.byteLength;}return json(await publishSurvey(db,bucket,{siteId:site,filename:details.filename,bytes:data.buffer,sha256:details.sha256,addedAt:details.addedAt,source:details.source,capturedAt:details.capturedAt,note:details.note,units:details.units,alignment:details.alignment},expected));}catch(e){return failure(e);}}
-export async function DELETE(request:Request){if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'Use the survey controls on this Site.'},403);try{const {db,bucket,params,site}=context(request);return json(await removeSharedSurvey(db,bucket,site,version(params.get('version'))));}catch(e){return failure(e);}}
+import { env } from 'cloudflare:workers';
+import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
+import { siteById } from '@/lib/private-network';
+import {
+  SurveyError,
+  surveyRow,
+  surveySnapshot,
+  publishSurvey,
+  removeSharedSurvey,
+} from '@/lib/shared-surveys';
+import type { SurveyRecord } from '@/lib/survey-store';
+const json = (value: unknown, status = 200) =>
+  Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
+const failure = (e: unknown) =>
+  json(
+    {
+      error:
+        e instanceof SurveyError
+          ? e.message
+          : 'Shared survey storage is unavailable. Local models remain unchanged.',
+    },
+    e instanceof SurveyError ? e.status : 503,
+  );
+function context(request: Request) {
+  const { DB, EVIDENCE } = env as unknown as {
+    DB?: D1Database;
+    EVIDENCE?: R2Bucket;
+  };
+  if (!DB || !EVIDENCE)
+    throw new SurveyError('Shared survey storage is not configured.', 503);
+  const params = new URL(request.url).searchParams,
+    site = params.get('site') || '';
+  if (!siteById(site)) throw new SurveyError('Choose a known site.');
+  return { db: DB, bucket: EVIDENCE, params, site };
+}
+function version(raw: string | null) {
+  if (raw === null || !/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)))
+    throw new SurveyError('Invalid shared survey version.');
+  return Number(raw);
+}
+export async function GET(request: Request) {
+  try {
+    const { db, bucket, params, site } = context(request),
+      row = await surveyRow(db, site);
+    if (params.get('file') !== '1') return json(surveySnapshot(row));
+    if (!row?.object_key || !row.metadata)
+      return json({ error: 'Shared survey not found.' }, 404);
+    if (row.version !== version(params.get('version')))
+      throw new SurveyError(
+        'Shared survey changed. Refresh before opening it.',
+        409,
+      );
+    const object = await bucket.get(row.object_key);
+    if (!object) throw new SurveyError('Survey original is unavailable.', 503);
+    const metadata = JSON.parse(row.metadata);
+    return new Response(object.body as unknown as ReadableStream, {
+      headers: {
+        'Content-Type': 'model/gltf-binary',
+        'Content-Length': String(object.size),
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(metadata.filename)}`,
+      },
+    });
+  } catch (e) {
+    return failure(e);
+  }
+}
+export async function PUT(request: Request) {
+  if (request.headers.get('origin') !== new URL(request.url).origin)
+    return json({ error: 'Use the survey controls on this Site.' }, 403);
+  if (request.headers.get('content-type') !== 'model/gltf-binary')
+    return json({ error: 'Send a binary GLB survey.' }, 415);
+  try {
+    const { db, bucket, params, site } = context(request),
+      expected = version(params.get('version'));
+    let details: Omit<SurveyRecord, 'bytes'>;
+    try {
+      const raw = request.headers.get('x-citymesh-survey') || '';
+      if (raw.length > 24000) throw new Error();
+      details = JSON.parse(decodeURIComponent(raw));
+    } catch {
+      throw new SurveyError('Invalid survey metadata.');
+    }
+    const reader = request.body?.getReader();
+    if (!reader) throw new SurveyError('Missing survey file.');
+    let length = 0;
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > 20 * 1024 * 1024) {
+        await reader.cancel();
+        throw new SurveyError('Survey exceeds 20 MB.', 413);
+      }
+      chunks.push(value);
+    }
+    const data = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return json(
+      await publishSurvey(
+        db,
+        bucket,
+        {
+          siteId: site,
+          filename: details.filename,
+          bytes: data.buffer,
+          sha256: details.sha256,
+          addedAt: details.addedAt,
+          source: details.source,
+          capturedAt: details.capturedAt,
+          note: details.note,
+          units: details.units,
+          alignment: details.alignment,
+        },
+        expected,
+      ),
+    );
+  } catch (e) {
+    return failure(e);
+  }
+}
+export async function DELETE(request: Request) {
+  if (request.headers.get('origin') !== new URL(request.url).origin)
+    return json({ error: 'Use the survey controls on this Site.' }, 403);
+  try {
+    const { db, bucket, params, site } = context(request);
+    return json(
+      await removeSharedSurvey(
+        db,
+        bucket,
+        site,
+        version(params.get('version')),
+      ),
+    );
+  } catch (e) {
+    return failure(e);
+  }
+}

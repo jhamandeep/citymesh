@@ -1,56 +1,673 @@
-import { siteDefinitions, siteById, canonicalSiteId } from './private-network.ts';
-export type Equipment = {id:string;name:string;kind:'antenna'|'radio'|'cabinet'|'battery';vendor:string;model:string;serial:string;position:[number,number,number];size:[number,number,number];azimuth:number;power:number;weight:number;logicalId:string;condition:'healthy'|'warning'|'offline'};
-export type Issue = {id:string;assetId:string;title:string;severity:'low'|'medium'|'high';status:'open'|'resolved';note:string;createdAt:string;observation?:{key:string;observedAt:string;source:string;state:'down'|'degraded'}};
-export type WorkItem = {id:string;label:string;complete:boolean;note:string};
-export type Project = {schemaVersion:1;siteId:string;name:string;networkId:string;revision:number;equipment:Equipment[];baseline:Equipment[];issues:Issue[];work:WorkItem[];stage:'draft'|'approved'|'building'|'accepted';history:{at:string;event:string}[];survey:{source:string;date:string;note:string}};
-export const STORAGE_KEY='citymesh.site-projects.v1';
-const equipment=(id:string,name:string,kind:Equipment['kind'],position:Equipment['position'],size:Equipment['size'],azimuth=0):Equipment=>({id,name,kind,vendor:'Demo multi-vendor',model:kind==='antenna'?'Panel 1800/3500':kind==='radio'?'RRU 4T4R':kind==='cabinet'?'Outdoor 19-inch':'DC battery bank',serial:`DEMO-${id}`,position,size,azimuth,power:kind==='radio'?480:kind==='cabinet'?650:0,weight:kind==='antenna'?24:kind==='radio'?19:kind==='cabinet'?130:210,logicalId:kind==='antenna'?`NR-${id}`:`HW-${id}`,condition:'healthy'});
-export function createProject(siteId='GBT-01'):Project {
- siteId=canonicalSiteId(siteId);const site=siteById(siteId);if(!site)throw new Error('Unknown private-network site.');
- let items:Equipment[]=[equipment('ANT-A','Sector A antenna','antenna',[0,22,-1.4],[.5,2,.22],0),equipment('ANT-B','Sector B antenna','antenna',[1.21,22,.7],[.5,2,.22],120),equipment('ANT-C','Sector C antenna','antenna',[-1.21,22,.7],[.5,2,.22],240),equipment('RRU-A','Sector A radio','radio',[0,19.7,-1.35],[.45,.7,.25]),equipment('RRU-B','Sector B radio','radio',[1.17,19.7,.68],[.45,.7,.25],120),equipment('RRU-C','Sector C radio','radio',[-1.17,19.7,.68],[.45,.7,.25],240),equipment('CAB-01','Baseband cabinet','cabinet',[4,1.05,2],[1.2,2.1,.85]),equipment('BAT-01','Backup batteries','battery',[4,.65,-.2],[1.2,1.3,.85])];
- if(site.type==='RTT')items=items.map(a=>({...a,position:[a.position[0],a.kind==='antenna'?18:a.kind==='radio'?15.7:a.position[1]+12,a.position[2]] as Equipment['position']}));
- if(site.type==='IBS'){items=[];for(let floor=0;floor<3;floor++){for(let sector=0;sector<2;sector++)items.push(equipment(`DAS-F${floor+1}-${sector+1}`,`Floor ${floor+1} indoor antenna ${sector+1}`,'antenna',[sector===0?-3:3,floor*4+2.8,-2],[.4,.15,.4]));items.push({...equipment(`RU-F${floor+1}`,`Floor ${floor+1} remote unit`,'radio',[5,floor*4+1.8,2],[.4,.6,.25]),power:150});}items.push(equipment('CAB-01','DAS head-end cabinet','cabinet',[-5,1.05,3],[1.2,2.1,.85]),equipment('BAT-01','DAS backup power','battery',[-5,.65,1],[1.2,1.3,.85]));}
- if(site.type==='SMALL_CELL')items=[equipment('ANT-A','Integrated small-cell antenna','antenna',[0,8,0],[.5,1,.5]),{...equipment('RRU-A','Integrated radio','radio',[0,6,.4],[.4,.7,.3]),power:180},equipment('CAB-01','Street cabinet','cabinet',[2,.75,1],[.6,1.5,.5]),equipment('BAT-01','Backup power','battery',[2,.5,-1],[.6,1,.5])];
- if(site.type==='CORE')items=['GW-A','GW-B','UPF-01','SW-01'].map((id,i)=>({...equipment(id,['Gateway rack A','Gateway rack B','Private 5G UPF rack','Transport switching rack'][i],'cabinet',[i<2?-2:2,1.1,i%2===0?-2:2],[.8,2.2,1.1]),power:1800}));
- items=items.map(a=>({...a,serial:`DEMO-${siteId}-${a.id}`,logicalId:`${siteId}/${a.id}`,vendor:a.kind==='antenna'?'Demo Radio Vendor':a.kind==='cabinet'?'Demo Transport Vendor':'Demo Infrastructure Vendor'}));
- return {schemaVersion:1,siteId,name:site.name,networkId:siteId,revision:1,equipment:structuredClone(items),baseline:structuredClone(items),issues:[],stage:'draft',work:[{id:'safety',label:'Site access and safety review',complete:false,note:''},{id:'mount',label:'Mounting and clearance verification',complete:false,note:''},{id:'cabling',label:'Power, fiber and grounding verification',complete:false,note:''},{id:'commission',label:'Commissioning and acceptance evidence',complete:false,note:''}],history:[],survey:{source:`Parametric ${site.type} demonstration model`,date:'2026-09-06',note:`${site.type} facility, ${site.height} m planning envelope. Illustrative geometry and equipment; no physical survey performed.`}};
+import {
+  siteDefinitions,
+  siteById,
+  canonicalSiteId,
+} from './private-network.ts';
+export type Equipment = {
+  id: string;
+  name: string;
+  kind: 'antenna' | 'radio' | 'cabinet' | 'battery';
+  vendor: string;
+  model: string;
+  serial: string;
+  position: [number, number, number];
+  size: [number, number, number];
+  azimuth: number;
+  power: number;
+  weight: number;
+  logicalId: string;
+  condition: 'healthy' | 'warning' | 'offline';
+};
+export type Issue = {
+  id: string;
+  assetId: string;
+  title: string;
+  severity: 'low' | 'medium' | 'high';
+  status: 'open' | 'resolved';
+  note: string;
+  createdAt: string;
+  observation?: {
+    key: string;
+    observedAt: string;
+    source: string;
+    state: 'down' | 'degraded';
+  };
+};
+export type WorkItem = {
+  id: string;
+  label: string;
+  complete: boolean;
+  note: string;
+};
+export type Project = {
+  schemaVersion: 1;
+  siteId: string;
+  name: string;
+  networkId: string;
+  revision: number;
+  equipment: Equipment[];
+  baseline: Equipment[];
+  issues: Issue[];
+  work: WorkItem[];
+  stage: 'draft' | 'approved' | 'building' | 'accepted';
+  history: { at: string; event: string }[];
+  survey: { source: string; date: string; note: string };
+};
+export const STORAGE_KEY = 'citymesh.site-projects.v1';
+const equipment = (
+  id: string,
+  name: string,
+  kind: Equipment['kind'],
+  position: Equipment['position'],
+  size: Equipment['size'],
+  azimuth = 0,
+): Equipment => ({
+  id,
+  name,
+  kind,
+  vendor: 'Demo multi-vendor',
+  model:
+    kind === 'antenna'
+      ? 'Panel 1800/3500'
+      : kind === 'radio'
+        ? 'RRU 4T4R'
+        : kind === 'cabinet'
+          ? 'Outdoor 19-inch'
+          : 'DC battery bank',
+  serial: `DEMO-${id}`,
+  position,
+  size,
+  azimuth,
+  power: kind === 'radio' ? 480 : kind === 'cabinet' ? 650 : 0,
+  weight:
+    kind === 'antenna'
+      ? 24
+      : kind === 'radio'
+        ? 19
+        : kind === 'cabinet'
+          ? 130
+          : 210,
+  logicalId: kind === 'antenna' ? `NR-${id}` : `HW-${id}`,
+  condition: 'healthy',
+});
+export function createProject(siteId = 'GBT-01'): Project {
+  siteId = canonicalSiteId(siteId);
+  const site = siteById(siteId);
+  if (!site) throw new Error('Unknown private-network site.');
+  let items: Equipment[] = [
+    equipment(
+      'ANT-A',
+      'Sector A antenna',
+      'antenna',
+      [0, 22, -1.4],
+      [0.5, 2, 0.22],
+      0,
+    ),
+    equipment(
+      'ANT-B',
+      'Sector B antenna',
+      'antenna',
+      [1.21, 22, 0.7],
+      [0.5, 2, 0.22],
+      120,
+    ),
+    equipment(
+      'ANT-C',
+      'Sector C antenna',
+      'antenna',
+      [-1.21, 22, 0.7],
+      [0.5, 2, 0.22],
+      240,
+    ),
+    equipment(
+      'RRU-A',
+      'Sector A radio',
+      'radio',
+      [0, 19.7, -1.35],
+      [0.45, 0.7, 0.25],
+    ),
+    equipment(
+      'RRU-B',
+      'Sector B radio',
+      'radio',
+      [1.17, 19.7, 0.68],
+      [0.45, 0.7, 0.25],
+      120,
+    ),
+    equipment(
+      'RRU-C',
+      'Sector C radio',
+      'radio',
+      [-1.17, 19.7, 0.68],
+      [0.45, 0.7, 0.25],
+      240,
+    ),
+    equipment(
+      'CAB-01',
+      'Baseband cabinet',
+      'cabinet',
+      [4, 1.05, 2],
+      [1.2, 2.1, 0.85],
+    ),
+    equipment(
+      'BAT-01',
+      'Backup batteries',
+      'battery',
+      [4, 0.65, -0.2],
+      [1.2, 1.3, 0.85],
+    ),
+  ];
+  if (site.type === 'RTT')
+    items = items.map((a) => ({
+      ...a,
+      position: [
+        a.position[0],
+        a.kind === 'antenna'
+          ? 18
+          : a.kind === 'radio'
+            ? 15.7
+            : a.position[1] + 12,
+        a.position[2],
+      ] as Equipment['position'],
+    }));
+  if (site.type === 'IBS') {
+    items = [];
+    for (let floor = 0; floor < 3; floor++) {
+      for (let sector = 0; sector < 2; sector++)
+        items.push(
+          equipment(
+            `DAS-F${floor + 1}-${sector + 1}`,
+            `Floor ${floor + 1} indoor antenna ${sector + 1}`,
+            'antenna',
+            [sector === 0 ? -3 : 3, floor * 4 + 2.8, -2],
+            [0.4, 0.15, 0.4],
+          ),
+        );
+      items.push({
+        ...equipment(
+          `RU-F${floor + 1}`,
+          `Floor ${floor + 1} remote unit`,
+          'radio',
+          [5, floor * 4 + 1.8, 2],
+          [0.4, 0.6, 0.25],
+        ),
+        power: 150,
+      });
+    }
+    items.push(
+      equipment(
+        'CAB-01',
+        'DAS head-end cabinet',
+        'cabinet',
+        [-5, 1.05, 3],
+        [1.2, 2.1, 0.85],
+      ),
+      equipment(
+        'BAT-01',
+        'DAS backup power',
+        'battery',
+        [-5, 0.65, 1],
+        [1.2, 1.3, 0.85],
+      ),
+    );
+  }
+  if (site.type === 'SMALL_CELL')
+    items = [
+      equipment(
+        'ANT-A',
+        'Integrated small-cell antenna',
+        'antenna',
+        [0, 8, 0],
+        [0.5, 1, 0.5],
+      ),
+      {
+        ...equipment(
+          'RRU-A',
+          'Integrated radio',
+          'radio',
+          [0, 6, 0.4],
+          [0.4, 0.7, 0.3],
+        ),
+        power: 180,
+      },
+      equipment(
+        'CAB-01',
+        'Street cabinet',
+        'cabinet',
+        [2, 0.75, 1],
+        [0.6, 1.5, 0.5],
+      ),
+      equipment(
+        'BAT-01',
+        'Backup power',
+        'battery',
+        [2, 0.5, -1],
+        [0.6, 1, 0.5],
+      ),
+    ];
+  if (site.type === 'CORE')
+    items = ['GW-A', 'GW-B', 'UPF-01', 'SW-01'].map((id, i) => ({
+      ...equipment(
+        id,
+        [
+          'Gateway rack A',
+          'Gateway rack B',
+          'Private 5G UPF rack',
+          'Transport switching rack',
+        ][i],
+        'cabinet',
+        [i < 2 ? -2 : 2, 1.1, i % 2 === 0 ? -2 : 2],
+        [0.8, 2.2, 1.1],
+      ),
+      power: 1800,
+    }));
+  items = items.map((a) => ({
+    ...a,
+    serial: `DEMO-${siteId}-${a.id}`,
+    logicalId: `${siteId}/${a.id}`,
+    vendor:
+      a.kind === 'antenna'
+        ? 'Demo Radio Vendor'
+        : a.kind === 'cabinet'
+          ? 'Demo Transport Vendor'
+          : 'Demo Infrastructure Vendor',
+  }));
+  return {
+    schemaVersion: 1,
+    siteId,
+    name: site.name,
+    networkId: siteId,
+    revision: 1,
+    equipment: structuredClone(items),
+    baseline: structuredClone(items),
+    issues: [],
+    stage: 'draft',
+    work: [
+      {
+        id: 'safety',
+        label: 'Site access and safety review',
+        complete: false,
+        note: '',
+      },
+      {
+        id: 'mount',
+        label: 'Mounting and clearance verification',
+        complete: false,
+        note: '',
+      },
+      {
+        id: 'cabling',
+        label: 'Power, fiber and grounding verification',
+        complete: false,
+        note: '',
+      },
+      {
+        id: 'commission',
+        label: 'Commissioning and acceptance evidence',
+        complete: false,
+        note: '',
+      },
+    ],
+    history: [],
+    survey: {
+      source: `Parametric ${site.type} demonstration model`,
+      date: '2026-09-06',
+      note: `${site.type} facility, ${site.height} m planning envelope. Illustrative geometry and equipment; no physical survey performed.`,
+    },
+  };
 }
-export function createPortfolio(){return Object.fromEntries(siteDefinitions.map(s=>[s.id,createProject(s.id)]));}
-export function readPortfolio(raw:string|null){const all=createPortfolio();if(!raw)return all;const input=JSON.parse(raw);if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Invalid portfolio.');const seen=new Set<string>();for(const [key,value] of Object.entries(input)){const p=parseProject(value);if(canonicalSiteId(key)!==p.siteId||seen.has(p.siteId))throw new Error('Duplicate or mismatched portfolio identity.');seen.add(p.siteId);all[p.siteId]=p;}return all;}
-export function siteCondition(p:Project){const site=siteById(p.siteId)!;const radios=p.equipment.filter(e=>e.kind==='antenna');const remote=p.equipment.filter(e=>e.kind==='radio');const cabinets=p.equipment.filter(e=>e.kind==='cabinet');const gateway=site.type==='CORE'?p.equipment.filter(e=>e.id.startsWith('GW-')):cabinets;
- const offline=!gateway.some(e=>e.condition!=='offline')||(site.type!=='CORE'&&!radios.some(e=>e.condition!=='offline'))||(remote.length>0&&!remote.some(e=>e.condition!=='offline'));
- const fraction=site.type==='CORE'?1:Math.min(radios.filter(e=>e.condition!=='offline').length/Math.max(1,radios.length),remote.length?remote.filter(e=>e.condition!=='offline').length/remote.length:1);
- return {offline,radioFactor:offline?0:fraction};
+export function createPortfolio() {
+  return Object.fromEntries(
+    siteDefinitions.map((s) => [s.id, createProject(s.id)]),
+  );
 }
-export function designChecks(p:Project){
- const definition=siteById(p.siteId)!;
- const problems:{assetId:string;message:string;severity:'warning'|'error'}[]=[];
- for(const a of p.equipment){if(a.position[1]-a.size[1]/2<0)problems.push({assetId:a.id,message:'Equipment extends below ground.',severity:'error'});if(a.position[1]+a.size[1]/2>definition.height)problems.push({assetId:a.id,message:`Equipment exceeds the ${definition.height} m planning envelope.`,severity:'error'});if(a.kind==='antenna'&&(definition.type==='GBT'||definition.type==='RTT')&&a.position[1]<10)problems.push({assetId:a.id,message:'Antenna is below the model’s 10 m planning threshold.',severity:'warning'});}
- for(let i=0;i<p.equipment.length;i++)for(let j=i+1;j<p.equipment.length;j++){const a=p.equipment[i],b=p.equipment[j];const bounds=(e:Equipment)=>{const rad=e.azimuth*Math.PI/180;return [Math.abs(Math.cos(rad))*e.size[0]+Math.abs(Math.sin(rad))*e.size[2],e.size[1],Math.abs(Math.sin(rad))*e.size[0]+Math.abs(Math.cos(rad))*e.size[2]];};const aa=bounds(a),bb=bounds(b);if(a.position.every((v,k)=>Math.abs(v-b.position[k])<(aa[k]+bb[k])/2))problems.push({assetId:a.id,message:`Possible equipment clash: ${a.name} / ${b.name}.`,severity:'error'});}
- const watts=p.equipment.reduce((s,a)=>s+a.power,0);if(watts>definition.powerLimit)problems.push({assetId:'site',message:`Power allocation exceeded: ${watts} W / ${definition.powerLimit.toLocaleString()} W.`,severity:'error'});
- return problems;
+export function readPortfolio(raw: string | null) {
+  const all = createPortfolio();
+  if (!raw) return all;
+  const input = JSON.parse(raw);
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new Error('Invalid portfolio.');
+  const seen = new Set<string>();
+  for (const [key, value] of Object.entries(input)) {
+    const p = parseProject(value);
+    if (canonicalSiteId(key) !== p.siteId || seen.has(p.siteId))
+      throw new Error('Duplicate or mismatched portfolio identity.');
+    seen.add(p.siteId);
+    all[p.siteId] = p;
+  }
+  return all;
 }
-export function changeSummary(p:Project){return {added:p.equipment.filter(a=>!p.baseline.some(b=>b.id===a.id)),removed:p.baseline.filter(a=>!p.equipment.some(b=>b.id===a.id)),modified:p.equipment.filter(a=>{const b=p.baseline.find(b=>b.id===a.id);return b&&JSON.stringify(a)!==JSON.stringify(b);})};}
-export function transition(p:Project,next:Project['stage'],now=new Date().toISOString()):Project{
- const expected={draft:'approved',approved:'building',building:'accepted',accepted:'draft'};
- if(expected[p.stage]!==next)throw new Error('Follow the review, build and acceptance sequence.');
- if(next==='approved'&&designChecks(p).some(c=>c.severity==='error'))throw new Error('Resolve design errors before approval.');
- if(next==='accepted'&&(!p.work.every(w=>w.complete&&w.note.trim())||p.issues.some(i=>i.status==='open'&&i.severity==='high')))throw new Error('Complete every field check with evidence notes and resolve high-severity issues.');
- return {...p,stage:next,revision:next==='draft'?p.revision+1:p.revision,baseline:next==='accepted'?structuredClone(p.equipment):p.baseline,work:next==='draft'?p.work.map(w=>({...w,complete:false,note:''})):p.work,history:[{at:now,event:next==='accepted'?`Revision ${p.revision} accepted as built`:next==='draft'?`Revision ${p.revision+1} opened`:next==='approved'?`Revision ${p.revision} approved`:'Field build started'},...p.history].slice(0,100)};
+export function siteCondition(p: Project) {
+  const site = siteById(p.siteId)!;
+  const radios = p.equipment.filter((e) => e.kind === 'antenna');
+  const remote = p.equipment.filter((e) => e.kind === 'radio');
+  const cabinets = p.equipment.filter((e) => e.kind === 'cabinet');
+  const gateway =
+    site.type === 'CORE'
+      ? p.equipment.filter((e) => e.id.startsWith('GW-'))
+      : cabinets;
+  const offline =
+    !gateway.some((e) => e.condition !== 'offline') ||
+    (site.type !== 'CORE' && !radios.some((e) => e.condition !== 'offline')) ||
+    (remote.length > 0 && !remote.some((e) => e.condition !== 'offline'));
+  const fraction =
+    site.type === 'CORE'
+      ? 1
+      : Math.min(
+          radios.filter((e) => e.condition !== 'offline').length /
+            Math.max(1, radios.length),
+          remote.length
+            ? remote.filter((e) => e.condition !== 'offline').length /
+                remote.length
+            : 1,
+        );
+  return { offline, radioFactor: offline ? 0 : fraction };
 }
-function record(v:unknown):v is Record<string,unknown>{return typeof v==='object'&&v!==null&&!Array.isArray(v);}
-function text(v:unknown,max=500):v is string{return typeof v==='string'&&v.length<=max;}
-function vector(v:unknown,dimension=false):v is [number,number,number]{return Array.isArray(v)&&v.length===3&&v.every(n=>typeof n==='number'&&Number.isFinite(n)&&(dimension?n>=.05&&n<=20:Math.abs(n)<=100));}
-export function parseProject(input:unknown):Project{
- if(record(input)&&typeof input.siteId==='string'&&typeof input.networkId==='string')input={...input,siteId:canonicalSiteId(input.siteId),networkId:canonicalSiteId(input.networkId)};
- if(!record(input)||input.schemaVersion!==1||!text(input.siteId,80)||!siteById(input.siteId)||!text(input.name,120)||!text(input.networkId,80)||input.networkId!==input.siteId||!Number.isInteger(input.revision)||Number(input.revision)<1||!['draft','approved','building','accepted'].includes(String(input.stage)))throw new Error('Invalid project identity or version.');
- for(const key of ['equipment','baseline']){const rows=input[key];if(!Array.isArray(rows)||rows.length>200)throw new Error('Equipment lists must contain at most 200 items.');const ids=new Set();for(const e of rows){if(!record(e)||!text(e.id,80)||!e.id||ids.has(e.id)||!text(e.name,120)||!['antenna','radio','cabinet','battery'].includes(String(e.kind))||!vector(e.position)||!vector(e.size,true)||!['vendor','model','serial','logicalId'].every(k=>text(e[k],120))||!['healthy','warning','offline'].includes(String(e.condition))||!['azimuth','power','weight'].every(k=>typeof e[k]==='number'&&Number.isFinite(e[k])&&Number(e[k])>=0&&Number(e[k])<=100000)||Number(e.azimuth)>360)throw new Error('Invalid or duplicate equipment record.');ids.add(e.id);}}
- if(!Array.isArray(input.issues)||input.issues.length>300||!input.issues.every(i=>record(i)&&text(i.id,80)&&text(i.assetId,80)&&text(i.title,160)&&text(i.note,2000)&&text(i.createdAt,80)&&['low','medium','high'].includes(String(i.severity))&&['open','resolved'].includes(String(i.status))))throw new Error('Invalid inspection issues.');
- for(const issue of input.issues){const ref=issue.observation;if(ref!==undefined&&(!record(ref)||!text(ref.key,250)||!ref.key||!text(ref.source,160)||!text(ref.observedAt,80)||!Number.isFinite(Date.parse(ref.observedAt))||!['down','degraded'].includes(String(ref.state))))throw new Error('Invalid issue observation reference.');}
- const required=['safety','mount','cabling','commission'];if(!Array.isArray(input.work)||input.work.length!==4||!required.every(id=>(input.work as unknown[]).some(w=>record(w)&&w.id===id))||!input.work.every(w=>record(w)&&text(w.id,80)&&text(w.label,160)&&typeof w.complete==='boolean'&&text(w.note,2000)))throw new Error('Invalid field checklist.');
- if(!record(input.survey)||!text(input.survey.source,160)||!text(input.survey.date,80)||!text(input.survey.note,2000)||!Array.isArray(input.history)||input.history.length>100||!input.history.every(h=>record(h)&&text(h.at,80)&&text(h.event,500)))throw new Error('Invalid project history or survey.');
- return structuredClone(input) as Project;
+export function designChecks(p: Project) {
+  const definition = siteById(p.siteId)!;
+  const problems: {
+    assetId: string;
+    message: string;
+    severity: 'warning' | 'error';
+  }[] = [];
+  for (const a of p.equipment) {
+    if (a.position[1] - a.size[1] / 2 < 0)
+      problems.push({
+        assetId: a.id,
+        message: 'Equipment extends below ground.',
+        severity: 'error',
+      });
+    if (a.position[1] + a.size[1] / 2 > definition.height)
+      problems.push({
+        assetId: a.id,
+        message: `Equipment exceeds the ${definition.height} m planning envelope.`,
+        severity: 'error',
+      });
+    if (
+      a.kind === 'antenna' &&
+      (definition.type === 'GBT' || definition.type === 'RTT') &&
+      a.position[1] < 10
+    )
+      problems.push({
+        assetId: a.id,
+        message: 'Antenna is below the model’s 10 m planning threshold.',
+        severity: 'warning',
+      });
+  }
+  for (let i = 0; i < p.equipment.length; i++)
+    for (let j = i + 1; j < p.equipment.length; j++) {
+      const a = p.equipment[i],
+        b = p.equipment[j];
+      const bounds = (e: Equipment) => {
+        const rad = (e.azimuth * Math.PI) / 180;
+        return [
+          Math.abs(Math.cos(rad)) * e.size[0] +
+            Math.abs(Math.sin(rad)) * e.size[2],
+          e.size[1],
+          Math.abs(Math.sin(rad)) * e.size[0] +
+            Math.abs(Math.cos(rad)) * e.size[2],
+        ];
+      };
+      const aa = bounds(a),
+        bb = bounds(b);
+      if (
+        a.position.every(
+          (v, k) => Math.abs(v - b.position[k]) < (aa[k] + bb[k]) / 2,
+        )
+      )
+        problems.push({
+          assetId: a.id,
+          message: `Possible equipment clash: ${a.name} / ${b.name}.`,
+          severity: 'error',
+        });
+    }
+  const watts = p.equipment.reduce((s, a) => s + a.power, 0);
+  if (watts > definition.powerLimit)
+    problems.push({
+      assetId: 'site',
+      message: `Power allocation exceeded: ${watts} W / ${definition.powerLimit.toLocaleString()} W.`,
+      severity: 'error',
+    });
+  return problems;
 }
-export function exportInventory(p:Project){const columns=['ID','Name','Type','Vendor','Model','Serial','Logical ID','X (m)','Height (m)','Z (m)','Width (m)','Height size (m)','Depth (m)','Azimuth','Power (W)','Weight (kg)','Condition'];const quote=(v:string|number)=>`"${String(v).replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')}"`;return [columns,...p.equipment.map(e=>[e.id,e.name,e.kind,e.vendor,e.model,e.serial,e.logicalId,...e.position,...e.size,e.azimuth,e.power,e.weight,e.condition])].map(row=>row.map(quote).join(',')).join('\r\n');}
-
-
+export function changeSummary(p: Project) {
+  return {
+    added: p.equipment.filter((a) => !p.baseline.some((b) => b.id === a.id)),
+    removed: p.baseline.filter((a) => !p.equipment.some((b) => b.id === a.id)),
+    modified: p.equipment.filter((a) => {
+      const b = p.baseline.find((b) => b.id === a.id);
+      return b && JSON.stringify(a) !== JSON.stringify(b);
+    }),
+  };
+}
+export function transition(
+  p: Project,
+  next: Project['stage'],
+  now = new Date().toISOString(),
+): Project {
+  const expected = {
+    draft: 'approved',
+    approved: 'building',
+    building: 'accepted',
+    accepted: 'draft',
+  };
+  if (expected[p.stage] !== next)
+    throw new Error('Follow the review, build and acceptance sequence.');
+  if (
+    next === 'approved' &&
+    designChecks(p).some((c) => c.severity === 'error')
+  )
+    throw new Error('Resolve design errors before approval.');
+  if (
+    next === 'accepted' &&
+    (!p.work.every((w) => w.complete && w.note.trim()) ||
+      p.issues.some((i) => i.status === 'open' && i.severity === 'high'))
+  )
+    throw new Error(
+      'Complete every field check with evidence notes and resolve high-severity issues.',
+    );
+  return {
+    ...p,
+    stage: next,
+    revision: next === 'draft' ? p.revision + 1 : p.revision,
+    baseline: next === 'accepted' ? structuredClone(p.equipment) : p.baseline,
+    work:
+      next === 'draft'
+        ? p.work.map((w) => ({ ...w, complete: false, note: '' }))
+        : p.work,
+    history: [
+      {
+        at: now,
+        event:
+          next === 'accepted'
+            ? `Revision ${p.revision} accepted as built`
+            : next === 'draft'
+              ? `Revision ${p.revision + 1} opened`
+              : next === 'approved'
+                ? `Revision ${p.revision} approved`
+                : 'Field build started',
+      },
+      ...p.history,
+    ].slice(0, 100),
+  };
+}
+function record(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+function text(v: unknown, max = 500): v is string {
+  return typeof v === 'string' && v.length <= max;
+}
+function vector(v: unknown, dimension = false): v is [number, number, number] {
+  return (
+    Array.isArray(v) &&
+    v.length === 3 &&
+    v.every(
+      (n) =>
+        typeof n === 'number' &&
+        Number.isFinite(n) &&
+        (dimension ? n >= 0.05 && n <= 20 : Math.abs(n) <= 100),
+    )
+  );
+}
+export function parseProject(input: unknown): Project {
+  if (
+    record(input) &&
+    typeof input.siteId === 'string' &&
+    typeof input.networkId === 'string'
+  )
+    input = {
+      ...input,
+      siteId: canonicalSiteId(input.siteId),
+      networkId: canonicalSiteId(input.networkId),
+    };
+  if (
+    !record(input) ||
+    input.schemaVersion !== 1 ||
+    !text(input.siteId, 80) ||
+    !siteById(input.siteId) ||
+    !text(input.name, 120) ||
+    !text(input.networkId, 80) ||
+    input.networkId !== input.siteId ||
+    !Number.isInteger(input.revision) ||
+    Number(input.revision) < 1 ||
+    !['draft', 'approved', 'building', 'accepted'].includes(String(input.stage))
+  )
+    throw new Error('Invalid project identity or version.');
+  for (const key of ['equipment', 'baseline']) {
+    const rows = input[key];
+    if (!Array.isArray(rows) || rows.length > 200)
+      throw new Error('Equipment lists must contain at most 200 items.');
+    const ids = new Set();
+    for (const e of rows) {
+      if (
+        !record(e) ||
+        !text(e.id, 80) ||
+        !e.id ||
+        ids.has(e.id) ||
+        !text(e.name, 120) ||
+        !['antenna', 'radio', 'cabinet', 'battery'].includes(String(e.kind)) ||
+        !vector(e.position) ||
+        !vector(e.size, true) ||
+        !['vendor', 'model', 'serial', 'logicalId'].every((k) =>
+          text(e[k], 120),
+        ) ||
+        !['healthy', 'warning', 'offline'].includes(String(e.condition)) ||
+        !['azimuth', 'power', 'weight'].every(
+          (k) =>
+            typeof e[k] === 'number' &&
+            Number.isFinite(e[k]) &&
+            Number(e[k]) >= 0 &&
+            Number(e[k]) <= 100000,
+        ) ||
+        Number(e.azimuth) > 360
+      )
+        throw new Error('Invalid or duplicate equipment record.');
+      ids.add(e.id);
+    }
+  }
+  if (
+    !Array.isArray(input.issues) ||
+    input.issues.length > 300 ||
+    !input.issues.every(
+      (i) =>
+        record(i) &&
+        text(i.id, 80) &&
+        text(i.assetId, 80) &&
+        text(i.title, 160) &&
+        text(i.note, 2000) &&
+        text(i.createdAt, 80) &&
+        ['low', 'medium', 'high'].includes(String(i.severity)) &&
+        ['open', 'resolved'].includes(String(i.status)),
+    )
+  )
+    throw new Error('Invalid inspection issues.');
+  for (const issue of input.issues) {
+    const ref = issue.observation;
+    if (
+      ref !== undefined &&
+      (!record(ref) ||
+        !text(ref.key, 250) ||
+        !ref.key ||
+        !text(ref.source, 160) ||
+        !text(ref.observedAt, 80) ||
+        !Number.isFinite(Date.parse(ref.observedAt)) ||
+        !['down', 'degraded'].includes(String(ref.state)))
+    )
+      throw new Error('Invalid issue observation reference.');
+  }
+  const required = ['safety', 'mount', 'cabling', 'commission'];
+  if (
+    !Array.isArray(input.work) ||
+    input.work.length !== 4 ||
+    !required.every((id) =>
+      (input.work as unknown[]).some((w) => record(w) && w.id === id),
+    ) ||
+    !input.work.every(
+      (w) =>
+        record(w) &&
+        text(w.id, 80) &&
+        text(w.label, 160) &&
+        typeof w.complete === 'boolean' &&
+        text(w.note, 2000),
+    )
+  )
+    throw new Error('Invalid field checklist.');
+  if (
+    !record(input.survey) ||
+    !text(input.survey.source, 160) ||
+    !text(input.survey.date, 80) ||
+    !text(input.survey.note, 2000) ||
+    !Array.isArray(input.history) ||
+    input.history.length > 100 ||
+    !input.history.every(
+      (h) => record(h) && text(h.at, 80) && text(h.event, 500),
+    )
+  )
+    throw new Error('Invalid project history or survey.');
+  return structuredClone(input) as Project;
+}
+export function exportInventory(p: Project) {
+  const columns = [
+    'ID',
+    'Name',
+    'Type',
+    'Vendor',
+    'Model',
+    'Serial',
+    'Logical ID',
+    'X (m)',
+    'Height (m)',
+    'Z (m)',
+    'Width (m)',
+    'Height size (m)',
+    'Depth (m)',
+    'Azimuth',
+    'Power (W)',
+    'Weight (kg)',
+    'Condition',
+  ];
+  const quote = (v: string | number) =>
+    `"${String(v)
+      .replace(/^[=+@\-\t\r]/, "'$&")
+      .replaceAll('"', '""')}"`;
+  return [
+    columns,
+    ...p.equipment.map((e) => [
+      e.id,
+      e.name,
+      e.kind,
+      e.vendor,
+      e.model,
+      e.serial,
+      e.logicalId,
+      ...e.position,
+      ...e.size,
+      e.azimuth,
+      e.power,
+      e.weight,
+      e.condition,
+    ]),
+  ]
+    .map((row) => row.map(quote).join(','))
+    .join('\r\n');
+}

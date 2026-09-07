@@ -1,15 +1,196 @@
 'use client';
-import {useState} from 'react';
-import {validatePortfolio,type SharedSnapshot} from '@/lib/shared-portfolio';
-import {comparePortfolios} from '@/lib/portfolio-diff';
-import type {Project} from '@/lib/site-model';
-type Entry={version:number;updatedAt:string};
-export default function PortfolioHistory({projects,onRestore}:{projects:Record<string,Project>;onRestore:(p:Record<string,Project>,version:number)=>void}){
- const [entries,setEntries]=useState<Entry[]|null>(null),[before,setBefore]=useState<number|null>(null),[selected,setSelected]=useState<SharedSnapshot|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const list=async(older=false)=>{setBusy(true);setError('');try{const r=await fetch(`/api/portfolio?history=1${older&&before?`&before=${before}`:''}`,{cache:'no-store'});const data=await r.json() as {entries?:Entry[];nextBefore?:number|null;error?:string};if(!r.ok||!Array.isArray(data.entries))throw new Error(data.error||'Unable to read revision history.');if(!data.entries.every(e=>Number.isSafeInteger(e.version)&&e.version>0&&typeof e.updatedAt==='string'))throw new Error('Invalid revision history.');const rows=data.entries;setEntries(prev=>older?[...(prev||[]),...rows]:rows);setBefore(data.nextBefore??null);}catch(e){setError(e instanceof Error?e.message:'Unable to read history.');}finally{setBusy(false);}};
- const diffs=selected?.projects?comparePortfolios(projects,selected.projects):[];
- return <div className="portfolio-history"><button disabled={busy} onClick={()=>list()}>Review shared history</button>{entries&&<><div className="history-list">{entries.map(e=><button disabled={busy} aria-pressed={selected?.version===e.version} key={e.version} onClick={async()=>{setBusy(true);setError('');try{const r=await fetch(`/api/portfolio?version=${e.version}`,{cache:'no-store'}),data=await r.json() as SharedSnapshot&{error?:string};if(!r.ok)throw new Error(data.error||'Revision unavailable.');if(data.version!==e.version||typeof data.updatedAt!=='string')throw new Error('Invalid revision response.');const p=validatePortfolio(data.projects);setSelected({...data,projects:p});}catch(e){setError(e instanceof Error?e.message:'Unable to open revision.');}finally{setBusy(false);}}}>v{e.version} · {new Date(e.updatedAt).toLocaleString()}</button>)}{!entries.length&&<p>No retained revisions yet. The next publish will retain the current shared version and the new one.</p>}</div>{before&&<button disabled={busy} onClick={()=>list(true)}>Load older revisions</button>}</>}
- {selected?.projects&&<section className="history-review"><h4>Restore preview · shared v{selected.version}</h4><p>{diffs.filter(d=>d.changed).length} of 30 sites differ from this browser. The table shows what restoring this revision would change.</p><div className="history-differences"><table><thead><tr><th>Site</th><th>Equipment count</th><th>Add / change / remove</th><th>Workflow stage</th><th>Other changed records</th></tr></thead><tbody>{diffs.filter(d=>d.changed).map(d=><tr key={d.siteId}><td>{d.siteId}</td><td>{d.beforeAssets} → {d.afterAssets}</td><td>+{d.added} / {d.modified} / −{d.removed}</td><td>{d.beforeStage} → {d.afterStage}</td><td>{d.otherChanges.join(", ")||"—"}</td></tr>)}</tbody></table></div><p>Restoring replaces this browser’s project data, including issues and field checks. Export local edits first. Shared data changes only when you publish; that creates a new version.</p><button disabled={busy} onClick={()=>{try{onRestore(selected.projects!,selected.version);setError('');}catch(e){setError(e instanceof Error?e.message:'Unable to restore locally.');}}}>Restore v{selected.version} to browser</button><button onClick={()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(selected.projects,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=`citymesh-shared-v${selected.version}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}}>Download revision JSON</button></section>}
- {error&&<output>{error}</output>}</div>;
+import { useState } from 'react';
+import { validatePortfolio, type SharedSnapshot } from '@/lib/shared-portfolio';
+import { comparePortfolios } from '@/lib/portfolio-diff';
+import type { Project } from '@/lib/site-model';
+type Entry = { version: number; updatedAt: string };
+export default function PortfolioHistory({
+  projects,
+  onRestore,
+}: {
+  projects: Record<string, Project>;
+  onRestore: (p: Record<string, Project>, version: number) => void;
+}) {
+  const [entries, setEntries] = useState<Entry[] | null>(null),
+    [before, setBefore] = useState<number | null>(null),
+    [selected, setSelected] = useState<SharedSnapshot | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  const list = async (older = false) => {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch(
+        `/api/portfolio?history=1${older && before ? `&before=${before}` : ''}`,
+        { cache: 'no-store' },
+      );
+      const data = (await r.json()) as {
+        entries?: Entry[];
+        nextBefore?: number | null;
+        error?: string;
+      };
+      if (!r.ok || !Array.isArray(data.entries))
+        throw new Error(data.error || 'Unable to read revision history.');
+      if (
+        !data.entries.every(
+          (e) =>
+            Number.isSafeInteger(e.version) &&
+            e.version > 0 &&
+            typeof e.updatedAt === 'string',
+        )
+      )
+        throw new Error('Invalid revision history.');
+      const rows = data.entries;
+      setEntries((prev) => (older ? [...(prev || []), ...rows] : rows));
+      setBefore(data.nextBefore ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to read history.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const diffs = selected?.projects
+    ? comparePortfolios(projects, selected.projects)
+    : [];
+  return (
+    <div className="portfolio-history">
+      <button disabled={busy} onClick={() => list()}>
+        Review shared history
+      </button>
+      {entries && (
+        <>
+          <div className="history-list">
+            {entries.map((e) => (
+              <button
+                disabled={busy}
+                aria-pressed={selected?.version === e.version}
+                key={e.version}
+                onClick={async () => {
+                  setBusy(true);
+                  setError('');
+                  try {
+                    const r = await fetch(
+                        `/api/portfolio?version=${e.version}`,
+                        { cache: 'no-store' },
+                      ),
+                      data = (await r.json()) as SharedSnapshot & {
+                        error?: string;
+                      };
+                    if (!r.ok)
+                      throw new Error(data.error || 'Revision unavailable.');
+                    if (
+                      data.version !== e.version ||
+                      typeof data.updatedAt !== 'string'
+                    )
+                      throw new Error('Invalid revision response.');
+                    const p = validatePortfolio(data.projects);
+                    setSelected({ ...data, projects: p });
+                  } catch (e) {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : 'Unable to open revision.',
+                    );
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                v{e.version} · {new Date(e.updatedAt).toLocaleString()}
+              </button>
+            ))}
+            {!entries.length && (
+              <p>
+                No retained revisions yet. The next publish will retain the
+                current shared version and the new one.
+              </p>
+            )}
+          </div>
+          {before && (
+            <button disabled={busy} onClick={() => list(true)}>
+              Load older revisions
+            </button>
+          )}
+        </>
+      )}
+      {selected?.projects && (
+        <section className="history-review">
+          <h4>Restore preview · shared v{selected.version}</h4>
+          <p>
+            {diffs.filter((d) => d.changed).length} of 30 sites differ from this
+            browser. The table shows what restoring this revision would change.
+          </p>
+          <div className="history-differences">
+            <table>
+              <thead>
+                <tr>
+                  <th>Site</th>
+                  <th>Equipment count</th>
+                  <th>Add / change / remove</th>
+                  <th>Workflow stage</th>
+                  <th>Other changed records</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diffs
+                  .filter((d) => d.changed)
+                  .map((d) => (
+                    <tr key={d.siteId}>
+                      <td>{d.siteId}</td>
+                      <td>
+                        {d.beforeAssets} → {d.afterAssets}
+                      </td>
+                      <td>
+                        +{d.added} / {d.modified} / −{d.removed}
+                      </td>
+                      <td>
+                        {d.beforeStage} → {d.afterStage}
+                      </td>
+                      <td>{d.otherChanges.join(', ') || '—'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Restoring replaces this browser’s project data, including issues and
+            field checks. Export local edits first. Shared data changes only
+            when you publish; that creates a new version.
+          </p>
+          <button
+            disabled={busy}
+            onClick={() => {
+              try {
+                onRestore(selected.projects!, selected.version);
+                setError('');
+              } catch (e) {
+                setError(
+                  e instanceof Error ? e.message : 'Unable to restore locally.',
+                );
+              }
+            }}
+          >
+            Restore v{selected.version} to browser
+          </button>
+          <button
+            onClick={() => {
+              const url = URL.createObjectURL(
+                  new Blob([JSON.stringify(selected.projects, null, 2)], {
+                    type: 'application/json',
+                  }),
+                ),
+                a = document.createElement('a');
+              a.href = url;
+              a.download = `citymesh-shared-v${selected.version}.json`;
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }}
+          >
+            Download revision JSON
+          </button>
+        </section>
+      )}
+      {error && <output>{error}</output>}
+    </div>
+  );
 }
-

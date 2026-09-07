@@ -1,8 +1,183 @@
 import * as THREE from 'three';
-import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {ground,buildingBase,type Environment,type LOSProfile} from './environment-model.ts';
-export function environmentMeshes(env:Environment,mergeBuildings=true){const terrain=new THREE.Group(),buildings=new THREE.Group(),t=env.terrain,geometry=new THREE.PlaneGeometry((t.width-1)*t.step,(t.height-1)*t.step,t.width-1,t.height-1),pos=geometry.getAttribute('position');for(let row=0;row<t.height;row++)for(let col=0;col<t.width;col++)pos.setXYZ(row*t.width+col,t.minX+col*t.step,t.elevations[row*t.width+col]-t.reference,t.minZ+row*t.step);geometry.computeVertexNormals();terrain.add(new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:'#839781',side:THREE.DoubleSide,roughness:1})));
- for(const b of env.buildings){const base=buildingBase(t,b);if(base===null)continue;const rings=b.rings.map(r=>r.map(p=>new THREE.Vector2(p[0],-p[1]))),outers=rings.filter(r=>THREE.ShapeUtils.isClockWise(r)),holes=rings.filter(r=>!THREE.ShapeUtils.isClockWise(r));for(const ring of outers.length?outers:rings){const shape=new THREE.Shape(ring);for(const hole of holes){const point=hole[0];let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],c=ring[j];if((a.y>point.y)!==(c.y>point.y)&&point.x<(c.x-a.x)*(point.y-a.y)/(c.y-a.y)+a.x)inside=!inside;}if(inside)shape.holes.push(new THREE.Path(hole));}const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:b.height??.4,bevelEnabled:false}),new THREE.MeshStandardMaterial({color:b.height===null?'#dfaf45':'#9bacb8',transparent:true,opacity:.65,roughness:.8}));mesh.rotation.x=-Math.PI/2;mesh.position.y=base-t.reference;mesh.userData={buildingId:b.id,height:b.height};buildings.add(mesh);}}
- if(!mergeBuildings)return {terrain,buildings};const parts:THREE.BufferGeometry[]=[];for(const child of buildings.children as THREE.Mesh[]){child.updateMatrix();const geometry=child.geometry;geometry.applyMatrix4(child.matrix);const count=geometry.getAttribute('position').count,color=new THREE.Color(child.userData.height===null?'#dfaf45':'#9bacb8'),colors=new Float32Array(count*3);for(let i=0;i<count;i++)colors.set([color.r,color.g,color.b],i*3);geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));geometry.setAttribute('buildingId',new THREE.BufferAttribute(new Float32Array(count).fill(child.userData.buildingId),1));parts.push(geometry);(child.material as THREE.Material).dispose();}buildings.clear();const merged=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(merged){const mesh=new THREE.Mesh(merged,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.8}));mesh.userData.buildingBatch=true;buildings.add(mesh);}return {terrain,buildings};}
-export function losMeshes(profile:LOSProfile,reference:number){const group=new THREE.Group(),points=profile.samples.map(s=>new THREE.Vector3(s.x,s.ray-reference,s.z)),material=new THREE.LineBasicMaterial({color:profile.status==='Model clear'?'#42eead':'#ff665c',depthTest:false}),line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),material);line.renderOrder=10;group.add(line);const lower=new THREE.Line(new THREE.BufferGeometry().setFromPoints(profile.samples.map(s=>new THREE.Vector3(s.x,s.ray-reference-.6*s.fresnel,s.z))),new THREE.LineDashedMaterial({color:'#ffd577',dashSize:3,gapSize:2,depthTest:false}));lower.computeLineDistances();group.add(lower);for(const s of profile.samples.filter((s,i)=>i%8===0&&s.obstacle>s.ray)){group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(s.x,s.ground-reference,s.z),new THREE.Vector3(s.x,s.obstacle-reference,s.z)]),new THREE.LineBasicMaterial({color:'#ef634e'})));}return group;}
-export function drapeGeometry(geometry:THREE.BufferGeometry,env:Environment,centerX=0,centerZ=0){const p=geometry.getAttribute('position');for(let i=0;i<p.count;i++){const x=p.getX(i)+centerX,z=-p.getY(i)+centerZ,t=env.terrain,elevation=ground(t,Math.max(t.minX,Math.min(t.minX+(t.width-1)*t.step,x)),Math.max(t.minZ,Math.min(t.minZ+(t.height-1)*t.step,z)));p.setZ(i,(elevation??t.reference)-t.reference+.15);}p.needsUpdate=true;geometry.computeVertexNormals();}
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  ground,
+  buildingBase,
+  type Environment,
+  type LOSProfile,
+} from './environment-model.ts';
+export function environmentMeshes(env: Environment, mergeBuildings = true) {
+  const terrain = new THREE.Group(),
+    buildings = new THREE.Group(),
+    t = env.terrain,
+    geometry = new THREE.PlaneGeometry(
+      (t.width - 1) * t.step,
+      (t.height - 1) * t.step,
+      t.width - 1,
+      t.height - 1,
+    ),
+    pos = geometry.getAttribute('position');
+  for (let row = 0; row < t.height; row++)
+    for (let col = 0; col < t.width; col++)
+      pos.setXYZ(
+        row * t.width + col,
+        t.minX + col * t.step,
+        t.elevations[row * t.width + col] - t.reference,
+        t.minZ + row * t.step,
+      );
+  geometry.computeVertexNormals();
+  terrain.add(
+    new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        color: '#839781',
+        side: THREE.DoubleSide,
+        roughness: 1,
+      }),
+    ),
+  );
+  for (const b of env.buildings) {
+    const base = buildingBase(t, b);
+    if (base === null) continue;
+    const rings = b.rings.map((r) =>
+        r.map((p) => new THREE.Vector2(p[0], -p[1])),
+      ),
+      outers = rings.filter((r) => THREE.ShapeUtils.isClockWise(r)),
+      holes = rings.filter((r) => !THREE.ShapeUtils.isClockWise(r));
+    for (const ring of outers.length ? outers : rings) {
+      const shape = new THREE.Shape(ring);
+      for (const hole of holes) {
+        const point = hole[0];
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const a = ring[i],
+            c = ring[j];
+          if (
+            a.y > point.y !== c.y > point.y &&
+            point.x < ((c.x - a.x) * (point.y - a.y)) / (c.y - a.y) + a.x
+          )
+            inside = !inside;
+        }
+        if (inside) shape.holes.push(new THREE.Path(hole));
+      }
+      const mesh = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, {
+          depth: b.height ?? 0.4,
+          bevelEnabled: false,
+        }),
+        new THREE.MeshStandardMaterial({
+          color: b.height === null ? '#dfaf45' : '#9bacb8',
+          transparent: true,
+          opacity: 0.65,
+          roughness: 0.8,
+        }),
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = base - t.reference;
+      mesh.userData = { buildingId: b.id, height: b.height };
+      buildings.add(mesh);
+    }
+  }
+  if (!mergeBuildings) return { terrain, buildings };
+  const parts: THREE.BufferGeometry[] = [];
+  for (const child of buildings.children as THREE.Mesh[]) {
+    child.updateMatrix();
+    const geometry = child.geometry;
+    geometry.applyMatrix4(child.matrix);
+    const count = geometry.getAttribute('position').count,
+      color = new THREE.Color(
+        child.userData.height === null ? '#dfaf45' : '#9bacb8',
+      ),
+      colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++)
+      colors.set([color.r, color.g, color.b], i * 3);
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute(
+      'buildingId',
+      new THREE.BufferAttribute(
+        new Float32Array(count).fill(child.userData.buildingId),
+        1,
+      ),
+    );
+    parts.push(geometry);
+    (child.material as THREE.Material).dispose();
+  }
+  buildings.clear();
+  const merged = mergeGeometries(parts, false);
+  parts.forEach((g) => g.dispose());
+  if (merged) {
+    const mesh = new THREE.Mesh(
+      merged,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
+    );
+    mesh.userData.buildingBatch = true;
+    buildings.add(mesh);
+  }
+  return { terrain, buildings };
+}
+export function losMeshes(profile: LOSProfile, reference: number) {
+  const group = new THREE.Group(),
+    points = profile.samples.map(
+      (s) => new THREE.Vector3(s.x, s.ray - reference, s.z),
+    ),
+    material = new THREE.LineBasicMaterial({
+      color: profile.status === 'Model clear' ? '#42eead' : '#ff665c',
+      depthTest: false,
+    }),
+    line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      material,
+    );
+  line.renderOrder = 10;
+  group.add(line);
+  const lower = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(
+      profile.samples.map(
+        (s) => new THREE.Vector3(s.x, s.ray - reference - 0.6 * s.fresnel, s.z),
+      ),
+    ),
+    new THREE.LineDashedMaterial({
+      color: '#ffd577',
+      dashSize: 3,
+      gapSize: 2,
+      depthTest: false,
+    }),
+  );
+  lower.computeLineDistances();
+  group.add(lower);
+  for (const s of profile.samples.filter(
+    (s, i) => i % 8 === 0 && s.obstacle > s.ray,
+  )) {
+    group.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(s.x, s.ground - reference, s.z),
+          new THREE.Vector3(s.x, s.obstacle - reference, s.z),
+        ]),
+        new THREE.LineBasicMaterial({ color: '#ef634e' }),
+      ),
+    );
+  }
+  return group;
+}
+export function drapeGeometry(
+  geometry: THREE.BufferGeometry,
+  env: Environment,
+  centerX = 0,
+  centerZ = 0,
+) {
+  const p = geometry.getAttribute('position');
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i) + centerX,
+      z = -p.getY(i) + centerZ,
+      t = env.terrain,
+      elevation = ground(
+        t,
+        Math.max(t.minX, Math.min(t.minX + (t.width - 1) * t.step, x)),
+        Math.max(t.minZ, Math.min(t.minZ + (t.height - 1) * t.step, z)),
+      );
+    p.setZ(i, (elevation ?? t.reference) - t.reference + 0.15);
+  }
+  p.needsUpdate = true;
+  geometry.computeVertexNormals();
+}

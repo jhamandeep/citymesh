@@ -1,18 +1,156 @@
-import {parseProject,type Project} from './site-model.ts';
-import {siteDefinitions} from './private-network.ts';
-import type {D1Database} from '@cloudflare/workers-types';
-export type SharedSnapshot={version:number;updatedAt:string;projects:Record<string,Project>|null};
-export async function readSharedHistory(db:D1Database,before=Number.MAX_SAFE_INTEGER){const result=await db.prepare('SELECT version,updated_at AS updatedAt FROM portfolio_snapshots WHERE version<? ORDER BY version DESC LIMIT 21').bind(before).all<{version:number;updatedAt:string}>();const entries=result.results.slice(0,20);return {entries,nextBefore:result.results.length>20?entries[entries.length-1].version:null};}
-export async function readSharedVersion(db:D1Database,version:number):Promise<SharedSnapshot|null>{const result=await db.prepare('SELECT s.version,s.updated_at,p.site_id,p.body FROM portfolio_snapshots s JOIN portfolio_revision_sites p ON p.version=s.version WHERE s.version=?').bind(version).all<{version:number;updated_at:string;site_id:string;body:string}>();if(!result.results.length)return null;return {version,updatedAt:result.results[0].updated_at,projects:validatePortfolio(Object.fromEntries(result.results.map(r=>[r.site_id,JSON.parse(r.body)])))};}
-export function validatePortfolio(value:unknown):Record<string,Project>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==30)throw new Error('Publish a complete 30-site portfolio.');const result:Record<string,Project>={};for(const site of siteDefinitions){const p=parseProject((value as Record<string,unknown>)[site.id]);if(p.siteId!==site.id)throw new Error('Site identity does not match its portfolio key.');const json=JSON.stringify(p);if(new TextEncoder().encode(json).byteLength>1500000)throw new Error(`${site.id} exceeds the 1.5 MB shared site limit. Export its history before publishing.`);result[site.id]=p;}return result;}
-export async function readSharedPortfolio(db:D1Database):Promise<SharedSnapshot>{
- const rows=await db.prepare('SELECT m.version,m.updated_at,p.site_id,p.body FROM portfolio_meta m LEFT JOIN portfolio_sites p ON 1=1 WHERE m.id=1').all<{version:number;updated_at:string;site_id:string|null;body:string|null}>();
- if(!rows.results.length)return {version:0,updatedAt:'',projects:null};const first=rows.results[0];const projects=Object.fromEntries(rows.results.filter(r=>r.site_id&&r.body).map(r=>[r.site_id!,JSON.parse(r.body!)]));return {version:first.version,updatedAt:first.updated_at,projects:first.version===0?null:validatePortfolio(projects)};
+import { parseProject, type Project } from './site-model.ts';
+import { siteDefinitions } from './private-network.ts';
+import type { D1Database } from '@cloudflare/workers-types';
+export type SharedSnapshot = {
+  version: number;
+  updatedAt: string;
+  projects: Record<string, Project> | null;
+};
+export async function readSharedHistory(
+  db: D1Database,
+  before = Number.MAX_SAFE_INTEGER,
+) {
+  const result = await db
+    .prepare(
+      'SELECT version,updated_at AS updatedAt FROM portfolio_snapshots WHERE version<? ORDER BY version DESC LIMIT 21',
+    )
+    .bind(before)
+    .all<{ version: number; updatedAt: string }>();
+  const entries = result.results.slice(0, 20);
+  return {
+    entries,
+    nextBefore:
+      result.results.length > 20 ? entries[entries.length - 1].version : null,
+  };
 }
-export async function publishSharedPortfolio(db:D1Database,expectedVersion:number,projects:unknown){
- if(!Number.isSafeInteger(expectedVersion)||expectedVersion<0)throw new Error('Invalid shared version.');const next=validatePortfolio(projects),token=crypto.randomUUID(),at=new Date().toISOString();
- // D1 batch is atomic. A request token gates every site row after the version compare-and-swap.
- const statements=[db.prepare('INSERT OR IGNORE INTO portfolio_meta(id,version,token,updated_at) VALUES(1,0,\'\',\'\')'),db.prepare('INSERT OR IGNORE INTO portfolio_snapshots(version,updated_at) SELECT version,updated_at FROM portfolio_meta WHERE id=1 AND version=? AND version>0').bind(expectedVersion),db.prepare('INSERT OR IGNORE INTO portfolio_revision_sites(version,site_id,body) SELECT m.version,p.site_id,p.body FROM portfolio_meta m JOIN portfolio_sites p ON 1=1 WHERE m.id=1 AND m.version=? AND m.version>0').bind(expectedVersion),db.prepare('UPDATE portfolio_meta SET version=version+1,token=?,updated_at=? WHERE id=1 AND version=?').bind(token,at,expectedVersion),...Object.entries(next).map(([id,p])=>db.prepare('INSERT INTO portfolio_sites(site_id,body) SELECT ?,? WHERE EXISTS(SELECT 1 FROM portfolio_meta WHERE id=1 AND token=?) ON CONFLICT(site_id) DO UPDATE SET body=excluded.body').bind(id,JSON.stringify(p),token)),db.prepare('INSERT INTO portfolio_snapshots(version,updated_at) SELECT version,updated_at FROM portfolio_meta WHERE id=1 AND token=?').bind(token),db.prepare('INSERT INTO portfolio_revision_sites(version,site_id,body) SELECT m.version,p.site_id,p.body FROM portfolio_meta m JOIN portfolio_sites p ON 1=1 WHERE m.id=1 AND m.token=?').bind(token)];
- const results=await db.batch(statements);if(results[3].meta.changes!==1)return {conflict:true as const};return {conflict:false as const,version:expectedVersion+1,updatedAt:at};
+export async function readSharedVersion(
+  db: D1Database,
+  version: number,
+): Promise<SharedSnapshot | null> {
+  const result = await db
+    .prepare(
+      'SELECT s.version,s.updated_at,p.site_id,p.body FROM portfolio_snapshots s JOIN portfolio_revision_sites p ON p.version=s.version WHERE s.version=?',
+    )
+    .bind(version)
+    .all<{
+      version: number;
+      updated_at: string;
+      site_id: string;
+      body: string;
+    }>();
+  if (!result.results.length) return null;
+  return {
+    version,
+    updatedAt: result.results[0].updated_at,
+    projects: validatePortfolio(
+      Object.fromEntries(
+        result.results.map((r) => [r.site_id, JSON.parse(r.body)]),
+      ),
+    ),
+  };
 }
-
+export function validatePortfolio(value: unknown): Record<string, Project> {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 30
+  )
+    throw new Error('Publish a complete 30-site portfolio.');
+  const result: Record<string, Project> = {};
+  for (const site of siteDefinitions) {
+    const p = parseProject((value as Record<string, unknown>)[site.id]);
+    if (p.siteId !== site.id)
+      throw new Error('Site identity does not match its portfolio key.');
+    const json = JSON.stringify(p);
+    if (new TextEncoder().encode(json).byteLength > 1500000)
+      throw new Error(
+        `${site.id} exceeds the 1.5 MB shared site limit. Export its history before publishing.`,
+      );
+    result[site.id] = p;
+  }
+  return result;
+}
+export async function readSharedPortfolio(
+  db: D1Database,
+): Promise<SharedSnapshot> {
+  const rows = await db
+    .prepare(
+      'SELECT m.version,m.updated_at,p.site_id,p.body FROM portfolio_meta m LEFT JOIN portfolio_sites p ON 1=1 WHERE m.id=1',
+    )
+    .all<{
+      version: number;
+      updated_at: string;
+      site_id: string | null;
+      body: string | null;
+    }>();
+  if (!rows.results.length)
+    return { version: 0, updatedAt: '', projects: null };
+  const first = rows.results[0];
+  const projects = Object.fromEntries(
+    rows.results
+      .filter((r) => r.site_id && r.body)
+      .map((r) => [r.site_id!, JSON.parse(r.body!)]),
+  );
+  return {
+    version: first.version,
+    updatedAt: first.updated_at,
+    projects: first.version === 0 ? null : validatePortfolio(projects),
+  };
+}
+export async function publishSharedPortfolio(
+  db: D1Database,
+  expectedVersion: number,
+  projects: unknown,
+) {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)
+    throw new Error('Invalid shared version.');
+  const next = validatePortfolio(projects),
+    token = crypto.randomUUID(),
+    at = new Date().toISOString();
+  // D1 batch is atomic. A request token gates every site row after the version compare-and-swap.
+  const statements = [
+    db.prepare(
+      "INSERT OR IGNORE INTO portfolio_meta(id,version,token,updated_at) VALUES(1,0,'','')",
+    ),
+    db
+      .prepare(
+        'INSERT OR IGNORE INTO portfolio_snapshots(version,updated_at) SELECT version,updated_at FROM portfolio_meta WHERE id=1 AND version=? AND version>0',
+      )
+      .bind(expectedVersion),
+    db
+      .prepare(
+        'INSERT OR IGNORE INTO portfolio_revision_sites(version,site_id,body) SELECT m.version,p.site_id,p.body FROM portfolio_meta m JOIN portfolio_sites p ON 1=1 WHERE m.id=1 AND m.version=? AND m.version>0',
+      )
+      .bind(expectedVersion),
+    db
+      .prepare(
+        'UPDATE portfolio_meta SET version=version+1,token=?,updated_at=? WHERE id=1 AND version=?',
+      )
+      .bind(token, at, expectedVersion),
+    ...Object.entries(next).map(([id, p]) =>
+      db
+        .prepare(
+          'INSERT INTO portfolio_sites(site_id,body) SELECT ?,? WHERE EXISTS(SELECT 1 FROM portfolio_meta WHERE id=1 AND token=?) ON CONFLICT(site_id) DO UPDATE SET body=excluded.body',
+        )
+        .bind(id, JSON.stringify(p), token),
+    ),
+    db
+      .prepare(
+        'INSERT INTO portfolio_snapshots(version,updated_at) SELECT version,updated_at FROM portfolio_meta WHERE id=1 AND token=?',
+      )
+      .bind(token),
+    db
+      .prepare(
+        'INSERT INTO portfolio_revision_sites(version,site_id,body) SELECT m.version,p.site_id,p.body FROM portfolio_meta m JOIN portfolio_sites p ON 1=1 WHERE m.id=1 AND m.token=?',
+      )
+      .bind(token),
+  ];
+  const results = await db.batch(statements);
+  if (results[3].meta.changes !== 1) return { conflict: true as const };
+  return {
+    conflict: false as const,
+    version: expectedVersion + 1,
+    updatedAt: at,
+  };
+}

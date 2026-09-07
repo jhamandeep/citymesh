@@ -1,8 +1,102 @@
-import type {Project} from './site-model.ts';
-import {buildSiteCabling} from './cabling.ts';
-import {type RFConfig,coverageRadius,receivedPower} from './geo-rf.ts';
-export type RFSector={id:string;radioId:string;position:[number,number,number];bearing:number;splitLoss:number;omni:boolean;active:boolean;reason:string};
-export function inventorySectors(p:Project,siteOffline=false):RFSector[]{const plan=buildSiteCabling(p);return p.equipment.filter(e=>e.kind==='antenna').map(a=>{const jumper=plan.cables.find(c=>c.medium==='rf'&&c.to.assetId===a.id),split=jumper?.from.assetId.startsWith('W-SPLIT-')?plan.cables.find(c=>c.medium==='rf'&&c.to.assetId===jumper.from.assetId):undefined,radioId=split?.from.assetId||jumper?.from.assetId||'',radio=p.equipment.find(e=>e.id===radioId&&e.kind==='radio'),fiber=plan.cables.find(c=>c.medium==='fiber'&&c.to.assetId===radioId),gateway=fiber&&p.equipment.find(e=>e.id===fiber.from.assetId);const reason=siteOffline?'Site transport unavailable':a.condition==='offline'?'Antenna offline':!radio||!fiber||!gateway?'No complete gateway → radio → antenna wiring':radio.condition==='offline'?'Serving radio offline':gateway.condition==='offline'?'Gateway offline':'';return {id:a.id,radioId,position:[...a.position],bearing:((180+a.azimuth)%360+360)%360,splitLoss:split?10*Math.log10(plan.cables.filter(c=>c.medium==='rf'&&c.from.assetId===jumper!.from.assetId).length):0,omni:p.siteId.startsWith('IBS'),active:!reason,reason};});}
-export function sectorConfig(c:RFConfig,s:RFSector){return {...c,loss:c.loss+s.splitLoss,azimuth:s.bearing};}
-export function sectorGroundRadius(c:RFConfig,s:RFSector,threshold:number,bearing:number){if(!s.active)return 0;const relative=Math.abs(((bearing-s.bearing+540)%360)-180),attenuation=s.omni?0:Math.min(30,12*(relative/c.beamwidth)**2),range=coverageRadius(sectorConfig(c,s),threshold+attenuation);return Math.sqrt(Math.max(0,range*range-(s.position[1]-1.5)**2));}
-export function probeSite(c:RFConfig,sectors:RFSector[],distance:number,bearing:number){const x=Math.sin(bearing*Math.PI/180)*distance,z=-Math.cos(bearing*Math.PI/180)*distance;const results=sectors.filter(s=>s.active).map(s=>{const dx=x-s.position[0],dz=z-s.position[2],slant=Math.hypot(dx,dz,s.position[1]-1.5),angle=(Math.atan2(dx,-dz)*180/Math.PI+360)%360,config=sectorConfig(c,s);return {id:s.id,power:receivedPower(config,slant,s.omni?s.bearing:angle)};}).sort((a,b)=>b.power-a.power);return results[0]||null;}
+import type { Project } from './site-model.ts';
+import { buildSiteCabling } from './cabling.ts';
+import { type RFConfig, coverageRadius, receivedPower } from './geo-rf.ts';
+export type RFSector = {
+  id: string;
+  radioId: string;
+  position: [number, number, number];
+  bearing: number;
+  splitLoss: number;
+  omni: boolean;
+  active: boolean;
+  reason: string;
+};
+export function inventorySectors(p: Project, siteOffline = false): RFSector[] {
+  const plan = buildSiteCabling(p);
+  return p.equipment
+    .filter((e) => e.kind === 'antenna')
+    .map((a) => {
+      const jumper = plan.cables.find(
+          (c) => c.medium === 'rf' && c.to.assetId === a.id,
+        ),
+        split = jumper?.from.assetId.startsWith('W-SPLIT-')
+          ? plan.cables.find(
+              (c) => c.medium === 'rf' && c.to.assetId === jumper.from.assetId,
+            )
+          : undefined,
+        radioId = split?.from.assetId || jumper?.from.assetId || '',
+        radio = p.equipment.find((e) => e.id === radioId && e.kind === 'radio'),
+        fiber = plan.cables.find(
+          (c) => c.medium === 'fiber' && c.to.assetId === radioId,
+        ),
+        gateway = fiber && p.equipment.find((e) => e.id === fiber.from.assetId);
+      const reason = siteOffline
+        ? 'Site transport unavailable'
+        : a.condition === 'offline'
+          ? 'Antenna offline'
+          : !radio || !fiber || !gateway
+            ? 'No complete gateway → radio → antenna wiring'
+            : radio.condition === 'offline'
+              ? 'Serving radio offline'
+              : gateway.condition === 'offline'
+                ? 'Gateway offline'
+                : '';
+      return {
+        id: a.id,
+        radioId,
+        position: [...a.position],
+        bearing: (((180 + a.azimuth) % 360) + 360) % 360,
+        splitLoss: split
+          ? 10 *
+            Math.log10(
+              plan.cables.filter(
+                (c) =>
+                  c.medium === 'rf' && c.from.assetId === jumper!.from.assetId,
+              ).length,
+            )
+          : 0,
+        omni: p.siteId.startsWith('IBS'),
+        active: !reason,
+        reason,
+      };
+    });
+}
+export function sectorConfig(c: RFConfig, s: RFSector) {
+  return { ...c, loss: c.loss + s.splitLoss, azimuth: s.bearing };
+}
+export function sectorGroundRadius(
+  c: RFConfig,
+  s: RFSector,
+  threshold: number,
+  bearing: number,
+) {
+  if (!s.active) return 0;
+  const relative = Math.abs(((bearing - s.bearing + 540) % 360) - 180),
+    attenuation = s.omni ? 0 : Math.min(30, 12 * (relative / c.beamwidth) ** 2),
+    range = coverageRadius(sectorConfig(c, s), threshold + attenuation);
+  return Math.sqrt(Math.max(0, range * range - (s.position[1] - 1.5) ** 2));
+}
+export function probeSite(
+  c: RFConfig,
+  sectors: RFSector[],
+  distance: number,
+  bearing: number,
+) {
+  const x = Math.sin((bearing * Math.PI) / 180) * distance,
+    z = -Math.cos((bearing * Math.PI) / 180) * distance;
+  const results = sectors
+    .filter((s) => s.active)
+    .map((s) => {
+      const dx = x - s.position[0],
+        dz = z - s.position[2],
+        slant = Math.hypot(dx, dz, s.position[1] - 1.5),
+        angle = ((Math.atan2(dx, -dz) * 180) / Math.PI + 360) % 360,
+        config = sectorConfig(c, s);
+      return {
+        id: s.id,
+        power: receivedPower(config, slant, s.omni ? s.bearing : angle),
+      };
+    })
+    .sort((a, b) => b.power - a.power);
+  return results[0] || null;
+}
