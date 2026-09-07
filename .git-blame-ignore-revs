@@ -1,0 +1,7 @@
+# Revisions listed here are ignored by `git blame`.
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honours this file automatically.
+
+# Format authored source with the project's own oxfmt config (mechanical, no behavior change)
+f8d05842fcff2e6ef1c6be103122499eb7a1dd75

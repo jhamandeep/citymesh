@@ -47,3 +47,9 @@ next-env.d.ts
 .test-shared-surveys-bundle.mjs
 .test-fullscreen-bundle.mjs
 .test-theme-rf.mjs
+
+# generated typescript build info
+tsconfig.tsbuildinfo
+
+# local deployment tarballs (git history is the archive)
+/deployment-archives/
