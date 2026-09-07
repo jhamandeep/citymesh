@@ -1,20 +1,82 @@
 # Citymesh — 30-site private network digital twin prototype
 
+[![CI](https://github.com/jhamandeep/citymesh/actions/workflows/ci.yml/badge.svg)](https://github.com/jhamandeep/citymesh/actions/workflows/ci.yml)
+
+A prototype digital twin for a 30-site private telecom network, built against the [Ericsson Site Digital Twin](https://www.ericsson.com/en/network-services/deployment/site-digital-twin) as a reference product. It covers the five deployment stages (inspect, plan, design, build, operate) with real 3D geometry, IFC4 BIM export, cable-level connectivity tracing, and RF/line-of-sight analysis over real Austin terrain and building data.
+
+**This is a prototype, not a certified engineering tool.** The 30 sites are hypothetical, the routes are schematic, and no live monitoring feed is connected. Each section below states what is and is not verified; `REFERENCE-AUDIT.md` tracks the same claims against the reference product.
+
 ## Run and verify
 
-`npm install` then `npm run dev`. Open `/` for city connectivity and `/sites` for the physical site workflow. `npm run build` produces the hosted Worker bundle.
+```bash
+npm install
+npm run dev       # / = city connectivity, /sites = physical site workflow
+npm run build     # hosted Worker bundle
+```
 
 Verification:
-- `node --experimental-strip-types private-network.test.mjs`
-- `node --experimental-strip-types site-model.test.mjs`
-- `node --experimental-strip-types site-geometry.test.mjs`
-- `node --experimental-strip-types ifc-export.test.mjs`
-- `node site-controls.test.mjs`
-- `node network-controls.test.mjs`
-- `npx tsc --noEmit`
-- `npx oxlint app lib components/twin`
+
+```bash
+npm run verify            # format check + lint + typecheck + 31 unit suites
+npm test                  # 31 unit suites on their own
+npm run format:check      # oxfmt --check on authored code
+npm run lint              # oxlint on authored code (lint:all includes the starter catalog)
+npm run typecheck         # tsc --noEmit
+```
+
+The 6 workerd/D1/R2 integration suites need a built app, a migrated local database and a running server:
+
+```bash
+npm run build && npm run db:migrate
+npm start                      # in one terminal
+npm run test:integration       # in another
+```
+
+> **Known failure:** 4 of the 6 integration suites currently fail against a freshly migrated local database. `shared-api.test.mjs` expects two competing publishers to yield `[200, 409]` and observes `[200, 503]` — the losing writer raises instead of returning a clean compare-and-swap conflict. CI runs these suites non-blocking so the result stays visible.
 
 The integration harness uses jsdom and the actual form, tab, select and checkbox controls. Only Next navigation and the WebGL viewport are replaced by adapters. Separate Three.js checks exercise real geometry construction, raycast selection, surface distance and GLB parsing. These are not browser visual QA. The starter's unused UI catalog has pre-existing lint findings; authored application code is linted separately.
+
+## Security model
+
+**There is no application-level authentication.** This is the single most important thing to understand before deploying this anywhere.
+
+- All four write endpoints (`/api/portfolio`, `/api/photos`, `/api/surveys`, `/api/observations`) are guarded only by comparing the request's `Origin` header against the site's own origin. That is CSRF protection, not authorization — any non-browser client can set the header.
+- The `GET` endpoints have no gate at all.
+- Access control is inherited **entirely** from the hosting platform's owner-private gate. If that gate is removed, relaxed, or the app is deployed elsewhere without an equivalent, the shared portfolio, the R2 photo originals and the survey GLBs become world-readable and world-writable.
+- Approval and acceptance in the workflow are unauthenticated. Revisions are immutable and complete, but they record no signer, so "approved" carries no identity.
+- Uploader-supplied `source` labels on observations and photos are free text, not authenticated sensor or capture identities.
+
+Bounded request sizes, checksum validation, same-origin mutation checks, compare-and-swap versioning and idempotent retries are implemented and tested. None of them substitute for authentication.
+
+## Development
+
+| Command | What it does |
+| --- | --- |
+| `npm run verify` | The full gate CI runs: format, lint, typecheck, 31 unit suites |
+| `npm test` | 31 unit suites (`scripts/run-tests.mjs`) |
+| `npm run test:integration` | 6 workerd/D1/R2 suites; needs a running server |
+| `npm run test:all` | Both tiers |
+| `npm run format` | Apply `oxfmt` to authored code |
+| `npm run db:migrate` | Apply `drizzle/*.sql` to the local D1 emulator (idempotent) |
+
+Authored code lives in `app/`, `lib/`, `components/twin/` and `scripts/`. `components/ui/` is the vendored shadcn catalog and `hooks/` is starter code; both carry pre-existing lint findings and are excluded from the gating lint scope.
+
+Commit `f8d0584` reformatted every authored file with the project's own `oxfmt` config after they had been stored effectively minified. It is listed in `.git-blame-ignore-revs`; enable it locally with:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+## Releases
+
+CI runs on every push and pull request. Tagging triggers a release build:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow re-runs `npm run verify`, builds the Worker bundle, and publishes two archives plus `SHA256SUMS.txt`: the deployable bundle with its D1 migrations, and the USGS/Austin source data with its import script. **Releases do not deploy.** Deploying requires provisioning a real D1 database and R2 bucket, replacing the placeholder `database_id`, applying `drizzle/*.sql`, and running `wrangler deploy` yourself.
 
 ## Prototype workflow
 

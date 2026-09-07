@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Wrangler writes logs and registry state outside the workspace by default.
+  WRANGLER_SEND_METRICS: 'false'
+  CI: 'true'
+
+jobs:
+  quality:
+    name: Format, lint, typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Scoped to authored code. The vendored components/ui catalog and the
+      # root *.test.mjs suites carry pre-existing findings that predate CI;
+      # `npm run lint:all` shows the full picture without gating merges.
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  test:
+    name: Unit suites (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the engines floor; 24 is what the suites are developed against.
+        # Both matter because the suites run under --experimental-strip-types.
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run 31 unit suites
+        run: npm test
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Worker bundle
+        run: npm run build
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-bundle-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+  integration:
+    name: Integration suites (workerd + D1 + R2)
+    runs-on: ubuntu-latest
+    needs: [build]
+    # Non-blocking on purpose. Four of the six suites currently fail against a
+    # freshly migrated local database: competing publishers return 503 where
+    # the suite expects a 409 conflict. That is tracked as a real finding, not
+    # a flaky harness, and gating merges on it would only teach people to
+    # ignore a red X. Results stay visible here until it is fixed.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (wrangler reads dist/server/wrangler.json for its bindings)
+        run: npm run build
+
+      - name: Apply D1 migrations to the local emulator
+        run: npm run db:migrate
+
+      - name: Start workerd on :3000
+        run: |
+          node node_modules/wrangler/bin/wrangler.js dev \
+            --config dist/server/wrangler.json \
+            --port 3000 \
+            --persist-to .wrangler/state \
+            > server.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -s -o /dev/null http://localhost:3000/api/portfolio; then
+              echo "server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become ready" >&2
+          cat server.log >&2
+          exit 1
+
+      - name: Run integration suites
+        run: npm run test:integration
+
+      - name: Server log
+        if: always()
+        run: tail -n 200 server.log || true

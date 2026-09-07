@@ -1,8 +1,134 @@
 import fs from 'node:fs/promises';
-const terrainUrl='https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer',buildingUrl='https://maps.austintexas.gov/arcgis/rest/services/Shared/PlanimetricsSurvey_1/MapServer/0';
-const city={lat:30.2672,lon:-97.7431},latScale=111320,lonScale=111320*Math.cos(city.lat*Math.PI/180),geo=(x,z)=>[city.lon+x/lonScale,city.lat-z/latScale];
-async function post(url,data){const response=await fetch(url,{method:'POST',body:new URLSearchParams(data),signal:AbortSignal.timeout(90000)});if(!response.ok)throw new Error('Source HTTP '+response.status);const json=await response.json();if(json.error)throw new Error(JSON.stringify(json.error));return json;}
-const grid={minX:-1250,minZ:-1000,step:25,width:101,height:81},points=[];for(let row=0;row<grid.height;row++)for(let col=0;col<grid.width;col++)points.push(geo(grid.minX+col*grid.step,grid.minZ+row*grid.step));const cached=process.argv.includes('--buildings-only')?JSON.parse(await fs.readFile('public/data/austin-terrain.json','utf8')):null;const elevations=cached?[...cached.elevations]:[];for(let start=elevations.length;start<points.length;start+=500){const batch=points.slice(start,start+500),r=await post(terrainUrl+'/getSamples',{f:'json',geometry:JSON.stringify({points:batch,spatialReference:{wkid:4326}}),geometryType:'esriGeometryMultipoint',returnFirstValueOnly:'true',interpolation:'RSP_BilinearInterpolation'});if(r.samples?.length!==batch.length)throw new Error('Incomplete terrain sample batch');const ordered=new Map(r.samples.map(s=>[s.locationId,s]));for(let i=0;i<batch.length;i++){const s=ordered.get(i),v=Number(s?.value);if(!Number.isFinite(v)||v<0||v>1000)throw new Error('Invalid elevation');elevations.push(Math.round(v*100)/100);}console.log('Terrain samples '+elevations.length+'/'+points.length);}
-const bounds=[...geo(-1250,1000),...geo(1250,-1000)],params={f:'json',where:'1=1',geometry:bounds.join(','),geometryType:'esriGeometryEnvelope',inSR:'4326',outSR:'4326',spatialRel:'esriSpatialRelIntersects'},ids=await post(buildingUrl+'/query',{...params,returnIdsOnly:'true'});if(!Array.isArray(ids.objectIds))throw new Error('Missing building IDs');const features=[];for(let start=0;start<ids.objectIds.length;start+=500){const r=await post(buildingUrl+'/query',{f:'json',objectIds:ids.objectIds.slice(start,start+500).join(','),outSR:'4326',outFields:'OBJECTID,MAX_HEIGHT,ELEVATION,BASE_ELEVATION',returnGeometry:'true'});if(r.exceededTransferLimit)throw new Error('Building transfer truncated');features.push(...r.features);}
-if(features.length!==ids.objectIds.length)throw new Error('Incomplete buildings');const buildings=features.map(f=>({id:f.attributes.OBJECTID,baseElevation:typeof f.attributes.BASE_ELEVATION==='number'&&f.attributes.BASE_ELEVATION>0?Math.round(f.attributes.BASE_ELEVATION*.3048006096*100)/100:null,height:typeof f.attributes.MAX_HEIGHT==='number'&&f.attributes.MAX_HEIGHT>0?Math.round(f.attributes.MAX_HEIGHT*.3048006096*100)/100:null,rings:f.geometry.rings.map(r=>r.map(([lon,lat])=>[Math.round((lon-city.lon)*lonScale*100)/100,Math.round((city.lat-lat)*latScale*100)/100]))}));
-const retrievedAt=new Date().toISOString();if(!cached)await fs.writeFile('public/data/austin-terrain.json',JSON.stringify({...grid,elevations,source:terrainUrl,retrievedAt,units:'metres',sampling:'25 m sample grid from USGS 3DEP bare-earth service; bilinear interpolation',reference:100}));await fs.writeFile('public/data/austin-buildings.json',JSON.stringify({buildings,source:buildingUrl,retrievedAt,sourceYear:2023,heightConversion:'MAX_HEIGHT in US survey feet × 0.3048006096 metres. Extruded at terrain ground; roof shape simplified.'}));console.log(JSON.stringify({buildings:buildings.length,unknownHeights:buildings.filter(b=>b.height===null).length,minElevation:Math.min(...elevations),maxElevation:Math.max(...elevations)}));
+const terrainUrl =
+    'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer',
+  buildingUrl =
+    'https://maps.austintexas.gov/arcgis/rest/services/Shared/PlanimetricsSurvey_1/MapServer/0';
+const city = { lat: 30.2672, lon: -97.7431 },
+  latScale = 111320,
+  lonScale = 111320 * Math.cos((city.lat * Math.PI) / 180),
+  geo = (x, z) => [city.lon + x / lonScale, city.lat - z / latScale];
+async function post(url, data) {
+  const response = await fetch(url, {
+    method: 'POST',
+    body: new URLSearchParams(data),
+    signal: AbortSignal.timeout(90000),
+  });
+  if (!response.ok) throw new Error('Source HTTP ' + response.status);
+  const json = await response.json();
+  if (json.error) throw new Error(JSON.stringify(json.error));
+  return json;
+}
+const grid = { minX: -1250, minZ: -1000, step: 25, width: 101, height: 81 },
+  points = [];
+for (let row = 0; row < grid.height; row++)
+  for (let col = 0; col < grid.width; col++)
+    points.push(geo(grid.minX + col * grid.step, grid.minZ + row * grid.step));
+const cached = process.argv.includes('--buildings-only')
+  ? JSON.parse(await fs.readFile('public/data/austin-terrain.json', 'utf8'))
+  : null;
+const elevations = cached ? [...cached.elevations] : [];
+for (let start = elevations.length; start < points.length; start += 500) {
+  const batch = points.slice(start, start + 500),
+    r = await post(terrainUrl + '/getSamples', {
+      f: 'json',
+      geometry: JSON.stringify({
+        points: batch,
+        spatialReference: { wkid: 4326 },
+      }),
+      geometryType: 'esriGeometryMultipoint',
+      returnFirstValueOnly: 'true',
+      interpolation: 'RSP_BilinearInterpolation',
+    });
+  if (r.samples?.length !== batch.length)
+    throw new Error('Incomplete terrain sample batch');
+  const ordered = new Map(r.samples.map((s) => [s.locationId, s]));
+  for (let i = 0; i < batch.length; i++) {
+    const s = ordered.get(i),
+      v = Number(s?.value);
+    if (!Number.isFinite(v) || v < 0 || v > 1000)
+      throw new Error('Invalid elevation');
+    elevations.push(Math.round(v * 100) / 100);
+  }
+  console.log('Terrain samples ' + elevations.length + '/' + points.length);
+}
+const bounds = [...geo(-1250, 1000), ...geo(1250, -1000)],
+  params = {
+    f: 'json',
+    where: '1=1',
+    geometry: bounds.join(','),
+    geometryType: 'esriGeometryEnvelope',
+    inSR: '4326',
+    outSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+  },
+  ids = await post(buildingUrl + '/query', {
+    ...params,
+    returnIdsOnly: 'true',
+  });
+if (!Array.isArray(ids.objectIds)) throw new Error('Missing building IDs');
+const features = [];
+for (let start = 0; start < ids.objectIds.length; start += 500) {
+  const r = await post(buildingUrl + '/query', {
+    f: 'json',
+    objectIds: ids.objectIds.slice(start, start + 500).join(','),
+    outSR: '4326',
+    outFields: 'OBJECTID,MAX_HEIGHT,ELEVATION,BASE_ELEVATION',
+    returnGeometry: 'true',
+  });
+  if (r.exceededTransferLimit) throw new Error('Building transfer truncated');
+  features.push(...r.features);
+}
+if (features.length !== ids.objectIds.length)
+  throw new Error('Incomplete buildings');
+const buildings = features.map((f) => ({
+  id: f.attributes.OBJECTID,
+  baseElevation:
+    typeof f.attributes.BASE_ELEVATION === 'number' &&
+    f.attributes.BASE_ELEVATION > 0
+      ? Math.round(f.attributes.BASE_ELEVATION * 0.3048006096 * 100) / 100
+      : null,
+  height:
+    typeof f.attributes.MAX_HEIGHT === 'number' && f.attributes.MAX_HEIGHT > 0
+      ? Math.round(f.attributes.MAX_HEIGHT * 0.3048006096 * 100) / 100
+      : null,
+  rings: f.geometry.rings.map((r) =>
+    r.map(([lon, lat]) => [
+      Math.round((lon - city.lon) * lonScale * 100) / 100,
+      Math.round((city.lat - lat) * latScale * 100) / 100,
+    ]),
+  ),
+}));
+const retrievedAt = new Date().toISOString();
+if (!cached)
+  await fs.writeFile(
+    'public/data/austin-terrain.json',
+    JSON.stringify({
+      ...grid,
+      elevations,
+      source: terrainUrl,
+      retrievedAt,
+      units: 'metres',
+      sampling:
+        '25 m sample grid from USGS 3DEP bare-earth service; bilinear interpolation',
+      reference: 100,
+    }),
+  );
+await fs.writeFile(
+  'public/data/austin-buildings.json',
+  JSON.stringify({
+    buildings,
+    source: buildingUrl,
+    retrievedAt,
+    sourceYear: 2023,
+    heightConversion:
+      'MAX_HEIGHT in US survey feet × 0.3048006096 metres. Extruded at terrain ground; roof shape simplified.',
+  }),
+);
+console.log(
+  JSON.stringify({
+    buildings: buildings.length,
+    unknownHeights: buildings.filter((b) => b.height === null).length,
+    minElevation: Math.min(...elevations),
+    maxElevation: Math.max(...elevations),
+  }),
+);

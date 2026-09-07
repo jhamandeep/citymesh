@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.1.0). Must already exist.'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WRANGLER_SEND_METRICS: 'false'
+
+jobs:
+  release:
+    name: Verify, build and publish release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # A tag must not produce artifacts that fail the same gate as a PR.
+      - name: Verify (format, lint, typecheck, 31 unit suites)
+        run: npm run verify
+
+      - name: Build Worker bundle
+        run: npm run build
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Two separate artifacts: the deployable Worker bundle, and the IFC/BIM
+      # and environment source data a reviewer needs to open the exports
+      # without running the app.
+      - name: Package Worker bundle
+        run: |
+          tar -czf "citymesh-worker-${{ steps.version.outputs.version }}.tar.gz" \
+            dist/ drizzle/ package.json package-lock.json
+
+      - name: Package source data
+        run: |
+          tar -czf "citymesh-data-${{ steps.version.outputs.version }}.tar.gz" \
+            public/data/ scripts/import-austin-environment.mjs
+
+      - name: Generate checksums
+        run: sha256sum citymesh-*.tar.gz > SHA256SUMS.txt
+
+      - name: Build release notes
+        id: notes
+        run: |
+          {
+            echo "## Citymesh ${{ steps.version.outputs.tag }}"
+            echo
+            echo "A 30-site private-network digital twin prototype. Not a"
+            echo "certified engineering, propagation or structural model; see"
+            echo "README.md and REFERENCE-AUDIT.md for what is and is not"
+            echo "demonstrated."
+            echo
+            echo "### Verified in this build"
+            echo
+            echo '- `oxfmt --check`, `oxlint` and `tsc --noEmit` clean on authored code'
+            echo '- 31 unit suites passing (real Three.js geometry, real web-ifc parsing, real SQLite transactions, real React controls under jsdom)'
+            echo '- Production Worker bundle builds'
+            echo
+            echo "### Not verified"
+            echo
+            echo '- Browser WebGL output, frame rate and label layout'
+            echo '- The 6 workerd/D1/R2 integration suites (4 currently fail: competing publishers return 503 where a 409 conflict is expected)'
+            echo '- Surveyed geometry accuracy, calibrated RF, external BIM viewer interoperability'
+            echo
+            echo "### Artifacts"
+            echo
+            echo '- `citymesh-worker-*.tar.gz` — built Worker bundle, D1 migrations, lockfile'
+            echo '- `citymesh-data-*.tar.gz` — USGS terrain / Austin footprint source data and its import script'
+            echo '- `SHA256SUMS.txt`'
+            echo
+            echo "### Deploying"
+            echo
+            echo 'This release does not deploy. To publish it yourself, provision a D1 database and an R2 bucket, set the real `database_id`, apply `drizzle/*.sql`, then `wrangler deploy --config dist/server/wrangler.json`.'
+            echo
+            echo "**Full changelog:** https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.tag }}"
+          } > RELEASE_NOTES.md
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Citymesh ${{ steps.version.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          files: |
+            citymesh-worker-*.tar.gz
+            citymesh-data-*.tar.gz
+            SHA256SUMS.txt
