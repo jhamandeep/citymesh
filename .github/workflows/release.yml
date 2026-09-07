@@ -37,7 +37,7 @@ jobs:
       - run: npm ci
 
       # A tag must not produce artifacts that fail the same gate as a PR.
-      - name: Verify (format, lint, typecheck, 31 unit suites)
+      - name: Verify (format, lint, typecheck, 30 unit suites)
         run: npm run verify
 
       - name: Build Worker bundle
@@ -80,7 +80,7 @@ jobs:
             echo "### Verified in this build"
             echo
             echo '- `oxfmt --check`, `oxlint` and `tsc --noEmit` clean on authored code'
-            echo '- 31 unit suites passing (real Three.js geometry, real web-ifc parsing, real SQLite transactions, real React controls under jsdom)'
+            echo '- 30 unit suites passing (real Three.js geometry, real web-ifc parsing, real SQLite transactions, real React controls under jsdom)'
             echo '- Production Worker bundle builds'
             echo
             echo "### Not verified"

@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
     "test:integration": "node scripts/run-tests.mjs --integration",
+    "test:quarantine": "node scripts/run-tests.mjs --quarantine",
     "test:all": "node scripts/run-tests.mjs --all",
     "db:migrate": "node scripts/migrate-local.mjs",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test"

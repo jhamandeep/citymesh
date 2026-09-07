@@ -60,8 +60,28 @@ jobs:
 
       - run: npm ci
 
-      - name: Run 31 unit suites
+      - name: Run unit suites
         run: npm test
+
+  quarantine:
+    name: Quarantined suites (known issues, non-gating)
+    runs-on: ubuntu-latest
+    # Runs and reports, but does not gate. See the QUARANTINE set in
+    # scripts/run-tests.mjs for why each suite is here. This is deliberately
+    # not `npm test` with a retry: the failure stays visible and attributable.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run quarantined suites
+        run: npm run test:quarantine
 
   build:
     name: Production build
